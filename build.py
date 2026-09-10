@@ -9,6 +9,7 @@ so it must get everything in a single fetch.
 No dependencies beyond the standard library, on purpose: this runs in a Pages
 workflow and should keep running in ten years.
 """
+import html
 import json
 import shutil
 import sys
@@ -71,6 +72,124 @@ def load(path):
     return app
 
 
+PAGE = """<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PSPDX catalog</title>
+<style>
+  :root {{
+    --ground: #eceeea; --card: #fff; --ink: #14181a; --dim: #5c665f;
+    --rule: #d6dcd6; --accent: #12702a;
+  }}
+  @media (prefers-color-scheme: dark) {{
+    :root {{
+      --ground: #080b09; --card: #111614; --ink: #e3e9e4; --dim: #8b968e;
+      --rule: #232c26; --accent: #3ed255;
+    }}
+  }}
+  * {{ box-sizing: border-box; }}
+  body {{
+    margin: 0; padding: 40px 20px 64px; background: var(--ground); color: var(--ink);
+    font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }}
+  .wrap {{ max-width: 960px; margin: 0 auto; }}
+  header {{ border-bottom: 1px solid var(--rule); padding-bottom: 20px; margin-bottom: 28px; }}
+  h1 {{ margin: 0 0 6px; font-size: 26px; letter-spacing: -.02em; }}
+  h1 span {{ color: var(--accent); }}
+  .lede {{ margin: 0; color: var(--dim); max-width: 60ch; }}
+  .meta {{
+    margin-top: 14px; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--dim); display: flex; gap: 18px; flex-wrap: wrap;
+  }}
+  a {{ color: var(--accent); }}
+  .grid {{ display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(272px, 1fr)); }}
+  .app {{
+    background: var(--card); border: 1px solid var(--rule);
+    display: flex; flex-direction: column; overflow: hidden;
+  }}
+  .app img, .noicon {{
+    display: block; width: 100%; aspect-ratio: 144 / 80; object-fit: cover;
+    border-bottom: 1px solid var(--rule);
+  }}
+  .noicon {{
+    background: var(--ground); color: var(--dim);
+    display: grid; place-items: center;
+    font: 11px ui-monospace, monospace; letter-spacing: .1em;
+  }}
+  .body {{ padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 6px; flex: 1; }}
+  .name {{ font-weight: 600; font-size: 16px; }}
+  .name a {{ text-decoration: none; }}
+  .name a:hover {{ text-decoration: underline; }}
+  .by {{ color: var(--dim); font-size: 13px; }}
+  .summary {{ margin: 2px 0 8px; flex: 1; }}
+  .tags {{
+    font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--dim);
+    display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+    border-top: 1px solid var(--rule); padding-top: 10px;
+  }}
+  .ver {{ color: var(--accent); }}
+  footer {{
+    margin-top: 36px; padding-top: 16px; border-top: 1px solid var(--rule);
+    color: var(--dim); font-size: 13px;
+  }}
+</style>
+<div class="wrap">
+  <header>
+    <h1>PSPDX <span>catalog</span></h1>
+    <p class="lede">Homebrew for the PlayStation Portable, listed so that
+    <a href="https://github.com/chriopter/pspdx">PSPDX</a> on the console can
+    install it and tell you when there is a new version. Downloads come from
+    each author&#39;s own release.</p>
+    <div class="meta">
+      <span>{count} apps</span>
+      <span>last checked {generated}</span>
+      <span><a href="catalog.json">catalog.json</a></span>
+      <span><a href="https://github.com/chriopter/pspdx-catalog">add yours</a></span>
+    </div>
+  </header>
+  <div class="grid">
+{cards}
+  </div>
+  <footer>Nothing is hosted here. Every download links to the release its
+  author published.</footer>
+</div>
+"""
+
+CARD = """    <article class="app">
+      {art}
+      <div class="body">
+        <div class="name"><a href="{repo}">{name}</a></div>
+        <div class="by">{author}</div>
+        <p class="summary">{summary}</p>
+        <div class="tags">
+          <span class="ver">{version}</span>
+          <span>{category}</span>
+          <span>{license}</span>
+          <span><a href="{url}">download</a></span>
+        </div>
+      </div>
+    </article>"""
+
+
+def write_page(apps, out):
+    """The page a person lands on. The console never reads it."""
+    e = html.escape
+    cards = []
+    for a in apps:
+        art = (f'<img src="{e(a["icon"])}" alt="" width="144" height="80" loading="lazy">'
+               if "icon" in a else '<div class="noicon">no icon</div>')
+        cards.append(CARD.format(
+            art=art, repo=e(a["repo"]), name=e(a["name"]), author=e(a["author"]),
+            summary=e(a["summary"]), version=e(a["release"].get("version", "")),
+            category=e(a["category"]), license=e(a["license"]),
+            url=e(a["release"]["url"])))
+    out.write_text(PAGE.format(
+        count=len(apps),
+        generated=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        cards="\n".join(cards)), encoding="utf-8")
+
+
 def main(out):
     out = Path(out)
     apps = [load(p) for p in sorted((HERE / "apps").glob("*/app.json"))]
@@ -94,6 +213,7 @@ def main(out):
     # Compact separators: the client holds this in RAM, and the PSP has 24 MB.
     text = json.dumps(catalog, ensure_ascii=False, separators=(",", ":"))
     out.write_text(text + "\n", encoding="utf-8")
+    write_page(apps, out.parent / "index.html")
     have = ", ".join(f"{sum(f in a for a in apps)} {f}s"
                      for _, f in ASSETS.values())
     print(f"{len(apps)} apps, {have}, {len(text)} bytes -> {out}")

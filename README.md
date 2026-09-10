@@ -5,6 +5,8 @@ One file per app, served as one
 [catalog.json](https://chriopter.github.io/pspdx-catalog/catalog.json).
 Downloads come from your own GitHub release, not from here.
 
+**[Browse what is listed →](https://chriopter.github.io/pspdx-catalog/)**
+
 ## Get listed
 
 A pull request adding `apps/<id>/app.json`. Or open an issue and ask. Open
