@@ -163,40 +163,38 @@ PAGE = """<!doctype html>
   a {{ color: var(--cyan); }}
 
   .grid {{
-    display: grid; gap: 4px;
-    grid-template-columns: repeat(auto-fill, minmax(228px, 1fr));
+    display: grid; gap: 10px;
+    grid-template-columns: repeat(auto-fill, 176px);
   }}
   .app {{
-    display: flex; flex-direction: column; align-items: center; text-align: center;
-    padding: 22px 16px 18px; gap: 4px; border-radius: 3px; height: 100%;
-    transition: background .18s ease, transform .18s ease;
+    display: block; text-decoration: none; color: inherit;
+    padding: 16px 16px 14px; border-radius: 4px;
+    background: rgba(255,255,255,.035);
+    border: 1px solid rgba(255,255,255,.07);
+    transition: background .18s ease, transform .18s ease, border-color .18s ease;
   }}
-  .app:hover {{ background: rgba(255,255,255,.055); transform: translateY(-2px); }}
+  .app:hover {{
+    background: rgba(255,255,255,.09); border-color: rgba(127,212,255,.45);
+    transform: translateY(-2px);
+  }}
   .app img, .noicon {{
-    width: 144px; height: 80px; display: block; margin-bottom: 12px;
-    box-shadow: 0 10px 22px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.08);
+    width: 144px; height: 80px; display: block;
+    box-shadow: 0 8px 18px rgba(0,0,0,.55);
   }}
   .noicon {{
-    display: grid; place-items: center; color: var(--dim);
-    border: 1px dashed var(--rule); box-shadow: none;
+    display: grid; place-items: center; color: var(--dim); box-shadow: none;
+    border: 1px dashed var(--rule);
     font: 10px ui-monospace, monospace; letter-spacing: .18em;
   }}
-  .name {{ font-size: 16px; font-weight: 400; letter-spacing: .01em; }}
-  .name a {{ color: var(--ink); text-decoration: none; }}
-  .name a:hover {{ color: var(--cyan); }}
-  .by {{ font-size: 12px; color: var(--dim); }}
-  .summary {{
-    margin: 8px 0 14px; font-size: 13.5px; color: var(--dim); font-weight: 300;
-    flex: 1;
+  .name {{
+    margin-top: 12px; font-size: 13.5px; line-height: 1.3; font-weight: 400;
   }}
-  .tags {{
-    margin-top: auto;
+  .app:hover .name {{ color: var(--cyan); }}
+  .ver {{
+    margin-top: 3px;
     font: 11px ui-monospace, SFMono-Regular, Menlo, monospace;
-    letter-spacing: .1em; color: var(--dim);
-    display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;
+    letter-spacing: .08em; color: var(--dim);
   }}
-  .ver {{ color: var(--cyan); }}
-
   footer {{
     margin-top: 40px; padding: 14px 4px 0; border-top: 1px solid var(--rule);
     display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
@@ -222,15 +220,14 @@ PAGE = """<!doctype html>
 
   <p class="lede">Homebrew for the PlayStation Portable, listed so that
   <a href="https://github.com/chriopter/pspdx">PSPDX</a> on the console can
-  install it and tell you when there is a new version. Every download comes
-  from the release its author published &mdash; nothing is hosted here.</p>
+  install it and tell you when there is a new version.</p>
 
   <div class="grid">
 {cards}
   </div>
 
   <footer>
-    <span><span class="glyph">&#10005;</span>download links to the author&#39;s release</span>
+    <span><span class="glyph">&#10005;</span>every download comes from its author&#39;s release</span>
     <span><a href="https://github.com/chriopter/pspdx-catalog">add an app</a></span>
   </footer>
 </div>
@@ -285,18 +282,11 @@ PAGE = """<!doctype html>
 </script>
 """
 
-CARD = """    <article class="app">
+CARD = """    <a class="app" href="{repo}">
       {art}
-      <div class="name"><a href="{repo}">{name}</a></div>
-      <div class="by">{author}</div>
-      <p class="summary">{summary}</p>
-      <div class="tags">
-        <span class="ver">{version}</span>
-        <span>{category}</span>
-        <span>{license}</span>
-        <span><a href="{url}">download</a></span>
-      </div>
-    </article>"""
+      <div class="name">{name}</div>
+      <div class="ver">{version}</div>
+    </a>"""
 
 
 def write_page(apps, out):
@@ -306,11 +296,8 @@ def write_page(apps, out):
     for a in apps:
         art = (f'<img src="{e(a["icon"])}" alt="" loading="lazy">'
                if "icon" in a else '<div class="noicon">no icon</div>')
-        cards.append(CARD.format(
-            art=art, repo=e(a["repo"]), name=e(a["name"]), author=e(a["author"]),
-            summary=e(a["summary"]), version=e(a["release"].get("version", "")),
-            category=e(a["category"]), license=e(a["license"]),
-            url=e(a["release"]["url"])))
+        cards.append(CARD.format(art=art, repo=e(a["repo"]), name=e(a["name"]),
+                                 version=e(a["release"].get("version", ""))))
     out.write_text(PAGE.format(
         count=len(apps),
         generated=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
