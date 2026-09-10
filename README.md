@@ -1,12 +1,10 @@
 # PSPDX catalog
 
-The catalog [PSPDX](https://github.com/chriopter/pspdx) fetches: one directory
-per app, folded into a single
-[catalog.json](https://chriopter.github.io/pspdx-catalog/catalog.json) and
-served from Pages.
+The catalog [PSPDX](https://github.com/chriopter/pspdx) fetches, served as one
+[catalog.json](https://chriopter.github.io/pspdx-catalog/catalog.json). Fields
+and reasoning: [main repository](https://github.com/chriopter/pspdx).
 
-What the fields mean, and why any of it is shaped this way, lives in the
-[main repository](https://github.com/chriopter/pspdx).
+**Hourly scan, or an issue opened here → release changed → catalog rebuilt.**
 
 ## Currently listed apps
 
@@ -17,77 +15,27 @@ What the fields mean, and why any of it is shaped this way, lives in the
 | **[PSPDX Test App](https://github.com/chriopter/psp-dx-testapp)** | apps · MIT | 2 |
 | **[Rust Raytracer](https://github.com/chriopter/psp-rust-raytracer)** | demos · MIT | 0.1.0 |
 
-Maintained by hand for now; the versions come from the last scan.
+By hand for now.
 
 ## Getting in
 
-- **To have an app listed** — open a pull request adding `apps/<id>/app.json`,
-  or open an issue and ask. Open source licences only.
-- **To have a release picked up now** rather than within the hour — open an
-  issue titled `rescan: <repo url>`.
+- **List an app** — a pull request adding `apps/<id>/app.json`, or an issue.
+  Open source licences only.
+- **Pick a release up now** — an issue titled `rescan: <repo url>`.
 
-## How a release gets here
+## What a release needs
 
-```
-              hourly-scan  ·  every hour
-                        |
-                        v
-               scan.py asks GitHub
-                        |
-            +-----------+-----------+
-            |                       |
-            v                       v
-     304, unchanged          a newer release
-            |                       |
-            v                       v
-          done        download · hash · look inside
-                                    |
-                                    v
-                        scan.py commits the entry
-                                    |
-                                    |    a pull request, or you
-                                    |    fixing a line by hand
-                                    |              |
-                                    +-------+------+
-                                            |
-                                            v
-                          any commit runs build-catalog
-                                            |
-                                            v
-              catalog.json  ·  shots/  ·  vids/  on Pages
-```
+- One `.zip` attached. More assets, and the entry names one in
+  `archive.asset`. No 7z, no rar.
+- An `EBOOT.PBP` anywhere inside. The shallowest wins.
+- Everything the app needs beside it or below: that directory is the package.
 
-
-`scan.py` reads releases, never repositories. It rewrites `release` and
-`archive` and nothing else — name, summary, category and licence stay as a
-person wrote them. Nothing is built unless something was committed.
-
-## What a release has to look like
-
-Nothing has to change in the author's project, but three things have to be
-true of the release:
-
-1. **One `.zip` attached.** More assets is fine, but then the entry has to say
-   which one, with a glob in `archive.asset` — half of all releases carry more
-   than one file. `.7z` and `.rar` cannot be opened.
-2. **An `EBOOT.PBP` somewhere inside it.** `X/EBOOT.PBP`, at the root, or
-   `PSP/GAME/X/EBOOT.PBP` all work: the shallowest one wins.
-3. **Everything the app needs sits beside that EBOOT or below it.** Its
-   directory *is* the package and goes onto the Memory Stick whole. Anything
-   above it — `LICENSES/`, a README, a source tarball — is ignored and can
-   stay in the zip.
-
-No manifest, no naming convention, no signature. The title in the XMB comes
-from the `PARAM.SFO` inside the EBOOT, which the toolchain already writes.
-
-Two ways to get it wrong: two EBOOTs at the same depth make the choice a coin
-toss — one zip is one package — and an archive that moves its package between
-releases is refused rather than published, with an issue instead.
+Two EBOOTs at the same depth is a coin toss. A layout that moves between
+releases is refused, with an issue.
 
 ## An app bundle
 
-One directory per app, named exactly after the `id` inside it. Here is
-[a whole one](apps/io.github.chriopter.rustraytracer).
+Named after the `id` inside it. [One of them](apps/io.github.chriopter.rustraytracer).
 
 | | |
 |---|---|
@@ -106,4 +54,4 @@ One directory per app, named exactly after the `id` inside it. Here is
 | [`trigger-scan.yml`](.github/workflows/trigger-scan.yml) | Scans one repository when an issue asks. |
 | [`build-catalog.yml`](.github/workflows/build-catalog.yml) | Builds the site and publishes it. |
 
-No binaries live here. Those stay in their authors' releases.
+No binaries here. Those stay in their authors' releases.
