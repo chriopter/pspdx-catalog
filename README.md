@@ -17,13 +17,13 @@ shaped this way: **[see the main repository](https://github.com/chriopter/pspdx)
 
 | | |
 |---|---|
-| `apps/<id>/app.json` | The entry. Upper half by hand — `id`, `name`, `author`, `summary`, `category`, `license`, `repo`. Lower half by `scan.py` — `release` and `archive`. |
-| `apps/<id>/screenshot.png` | 480x272, optional. Fetched only for the app on screen. |
-| `apps/<id>/video.mp4` | Ten seconds of H.264 baseline, optional. What the Media Engine can decode. |
-| `scan.py` | Asks GitHub for the newest release, downloads it, hashes the bytes it received, looks inside the archive, writes `release` and `archive`. Refuses when the package has moved inside the archive. Needs the network. |
-| `build.py` | Folds `apps/*/app.json` into one `catalog.json`, copies the assets to `shots/` and `vids/`, drops `archive`. Never touches the network. |
-| `.github/workflows/scan.yml` | Hourly, plus a weekly heartbeat, plus a button. Runs `scan.py --all`, commits what it found, then calls `pages.yml`, and opens an issue when something needs a person. |
-| `.github/workflows/rescan.yml` | Answers an issue titled `rescan: <url>`, but only for repositories already listed. Scans, commits, comments, closes. |
-| `.github/workflows/pages.yml` | Builds `_site` and deploys. Callable, because a push made with `GITHUB_TOKEN` starts nothing by itself. |
+| `apps/<id>/app.json` | The entry. Half by hand, half by `scan.py`. |
+| `apps/<id>/screenshot.png` | 480x272 still, optional. |
+| `apps/<id>/video.mp4` | Ten seconds of H.264 baseline, optional. |
+| `scan.py` | Reads the newest release, hashes it, looks inside. |
+| `build.py` | Folds every entry into one `catalog.json`. |
+| `.github/workflows/scan.yml` | Runs the scan hourly, commits, deploys. |
+| `.github/workflows/rescan.yml` | Scans one repository when an issue asks. |
+| `.github/workflows/pages.yml` | Builds the site and publishes it. |
 
 No binaries live here. Those stay in their authors' releases.
