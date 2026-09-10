@@ -93,11 +93,10 @@ PAGE = """<!doctype html>
       no-repeat, #04070d;
     -webkit-font-smoothing: antialiased;
   }}
-  .wave {{
+  #wave {{
     position: fixed; inset: 0; z-index: 0; pointer-events: none;
-    opacity: .5; overflow: hidden;
+    width: 100%; height: 100%; display: block;
   }}
-  .wave svg {{ position: absolute; top: 8%; left: -5%; width: 110%; height: 60%; }}
   .wrap {{ position: relative; z-index: 1; max-width: 1000px; margin: 0 auto; }}
 
   header {{
@@ -167,16 +166,7 @@ PAGE = """<!doctype html>
     vertical-align: -3px; margin-right: 5px;
   }}
 </style>
-<div class="wave" aria-hidden="true">
-  <svg viewBox="0 0 1200 400" preserveAspectRatio="none">
-    <path d="M0 250 C 220 120, 380 330, 620 210 S 1000 90, 1200 180"
-          fill="none" stroke="#8fd0ff" stroke-opacity=".30" stroke-width="1.5"/>
-    <path d="M0 285 C 240 165, 420 360, 660 245 S 1020 130, 1200 215"
-          fill="none" stroke="#8fd0ff" stroke-opacity=".18" stroke-width="1"/>
-    <path d="M0 320 C 260 210, 460 395, 700 280 S 1040 175, 1200 250"
-          fill="none" stroke="#8fd0ff" stroke-opacity=".10" stroke-width="1"/>
-  </svg>
-</div>
+<canvas id="wave" aria-hidden="true"></canvas>
 <div class="wrap">
   <header>
     <h1><b>PSPDX</b> catalog</h1>
@@ -201,6 +191,55 @@ PAGE = """<!doctype html>
     <span><a href="https://github.com/chriopter/pspdx-catalog">add an app</a></span>
   </footer>
 </div>
+
+<script>
+/* The XMB wave: bands of offset sine curves drifting past each other. Hand
+   written, because the console it is imitating is the whole point and a
+   dependency would outlive its own CDN. */
+(function () {{
+  var c = document.getElementById("wave"), x = c.getContext("2d");
+  var still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var w, h;
+
+  function size() {{
+    w = c.width = innerWidth;
+    h = c.height = innerHeight;
+  }}
+
+  function band(mid, amp, freq, phase, lines, alpha) {{
+    for (var i = 0; i < lines; i++) {{
+      var lift = (i - lines / 2) * (amp * 0.13);
+      x.beginPath();
+      for (var px = 0; px <= w; px += 8) {{
+        var u = px / w;
+        var y = mid + lift
+              + Math.sin(u * freq + phase + i * 0.10) * amp
+              + Math.sin(u * freq * 2.7 + phase * 1.6) * amp * 0.28;
+        px ? x.lineTo(px, y) : x.moveTo(px, y);
+      }}
+      x.strokeStyle = "rgba(158,214,255," + (alpha * (1 - Math.abs(i - lines / 2) / lines)) + ")";
+      x.lineWidth = 1;
+      x.stroke();
+    }}
+  }}
+
+  var t = 0;
+  function frame() {{
+    x.clearRect(0, 0, w, h);
+    band(h * 0.42, h * 0.075, 4.2, t,        16, 0.30);
+    band(h * 0.56, h * 0.055, 5.6, t * 0.7 + 2, 12, 0.20);
+    band(h * 0.70, h * 0.045, 3.4, -t * 0.5,    10, 0.13);
+    if (!still) {{
+      t += 0.004;
+      requestAnimationFrame(frame);
+    }}
+  }}
+
+  addEventListener("resize", function () {{ size(); if (still) frame(); }});
+  size();
+  frame();
+}})();
+</script>
 """
 
 CARD = """    <article class="app">
