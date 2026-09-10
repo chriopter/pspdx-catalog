@@ -1,9 +1,9 @@
 {
   "rev": 1789071024,
-  "seen": 1,
+  "seen": 1789071024,
   "version": "4",
   "url": "https://github.com/chriopter/psp-dx-testapp-abandoned/releases/download/v4/aband.zip",
   "sha256": "b26b48c22f3bd12cbd33921f5a8cd117dc3170c71badd1296f77a66e43998343",
   "size": 77915,
-  "root": "NOT/WHERE/IT/IS/"
+  "root": "PSP/GAME/PSPDXTestAbandoned/"
 }
