@@ -13,13 +13,21 @@ shaped this way: **[see the main repository](https://github.com/chriopter/pspdx)
 - **To have a release picked up now** rather than within the hour — open an
   issue titled `rescan: <repo url>`.
 
-## What is in here
+## An app bundle
+
+One directory per app, named after its id.
 
 | | |
 |---|---|
-| `apps/<id>/app.json` | The entry. Half by hand, half by `scan.py`. |
-| `apps/<id>/screenshot.png` | 480x272 still, optional. |
-| `apps/<id>/video.mp4` | Ten seconds of H.264 baseline, optional. |
+| `app.json` | The entry. Half by hand, half by `scan.py`. |
+| `icon.png` | 144x80, out of the EBOOT. Optional. |
+| `screenshot.png` | 480x272 still. Optional. |
+| `video.mp4` | Ten seconds of H.264 baseline. Optional. |
+
+## The machinery
+
+| | |
+|---|---|
 | `scan.py` | Reads the newest release, hashes it, looks inside. |
 | `build.py` | Folds every entry into one `catalog.json`. |
 | `.github/workflows/scan.yml` | Runs the scan hourly, commits, deploys. |
