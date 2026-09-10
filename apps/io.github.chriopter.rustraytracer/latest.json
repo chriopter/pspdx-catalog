@@ -1,7 +1,7 @@
 {
   "rev": 1789071029,
-  "seen": 1,
-  "version": "stale",
+  "seen": 1789071029,
+  "version": "0.4.0",
   "url": "https://github.com/chriopter/psp-rust-raytracer/releases/download/v0.4.0/ray.zip",
   "sha256": "cec9b48b1b910dd519f09a900867e95edd1ac211e2f91f0c6319078f044996f6",
   "size": 86332,
