@@ -16,9 +16,22 @@ Downloads come from your own GitHub release, not from here.
 
 ## Get listed
 
-A pull request adding `apps/<id>/app.json` — copy
-[an existing one](apps/io.github.chriopter.rustraytracer/app.json). Or open an
-issue and ask. Open source licences only.
+A pull request adding `apps/<id>/app.json`. Or open an issue and ask. Open
+source licences only.
+
+```json
+{
+  "id": "io.github.<user>.<app>",
+  "name": "Your App",
+  "author": "<user>",
+  "summary": "One line, short enough for a PSP screen.",
+  "category": "games",
+  "license": "MIT",
+  "repo": "https://github.com/<user>/<repo>"
+}
+```
+
+That is all you write. `scan.py` fills in the version, URL and checksum.
 
 ## Release your app
 
