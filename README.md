@@ -32,7 +32,7 @@ what lands on the Memory Stick.
 
 More than one file attached? Say which: `"archive": { "asset": "*-psp.zip" }`.
 
-## Staying current
+## Auto refresh
 
 Checked hourly. A new release is downloaded, checked and entered on its own —
 you tell us nothing. Faster: open an issue titled `rescan: <repo url>`.
