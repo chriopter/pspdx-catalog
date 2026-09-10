@@ -103,18 +103,19 @@ PAGE = """<!doctype html>
     color: var(--dim); display: flex; gap: 18px; flex-wrap: wrap;
   }}
   a {{ color: var(--accent); }}
-  .grid {{ display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(272px, 1fr)); }}
+  .grid {{ display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }}
   .app {{
     background: var(--card); border: 1px solid var(--rule);
     display: flex; flex-direction: column; overflow: hidden;
   }}
-  .app img, .noicon {{
-    display: block; width: 100%; aspect-ratio: 144 / 80; object-fit: cover;
-    border-bottom: 1px solid var(--rule);
+  .media {{
+    display: grid; place-items: center; padding: 16px 12px;
+    background: var(--ground); border-bottom: 1px solid var(--rule);
   }}
+  .media img {{ display: block; width: 144px; height: 80px; }}
   .noicon {{
-    background: var(--ground); color: var(--dim);
-    display: grid; place-items: center;
+    width: 144px; height: 80px; display: grid; place-items: center;
+    border: 1px dashed var(--rule); color: var(--dim);
     font: 11px ui-monospace, monospace; letter-spacing: .1em;
   }}
   .body {{ padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 6px; flex: 1; }}
@@ -157,7 +158,7 @@ PAGE = """<!doctype html>
 """
 
 CARD = """    <article class="app">
-      {art}
+      <div class="media">{art}</div>
       <div class="body">
         <div class="name"><a href="{repo}">{name}</a></div>
         <div class="by">{author}</div>
@@ -177,7 +178,7 @@ def write_page(apps, out):
     e = html.escape
     cards = []
     for a in apps:
-        art = (f'<img src="{e(a["icon"])}" alt="" width="144" height="80" loading="lazy">'
+        art = (f'<img src="{e(a["icon"])}" alt="" loading="lazy">'
                if "icon" in a else '<div class="noicon">no icon</div>')
         cards.append(CARD.format(
             art=art, repo=e(a["repo"]), name=e(a["name"]), author=e(a["author"]),
