@@ -33,11 +33,15 @@ jobs:
 
       - name: Scan
         id: scan
+        shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          # Through the environment, never interpolated into the script: a
+          # dispatch input reaching bash unquoted is a command, not a value.
+          REPO: ${{ inputs.repo }}
         run: |
           set +e
-          python3 scan.py ${{ inputs.repo || '--all' }} 2>&1 | tee scan.log
+          python3 scan.py "${REPO:---all}" 2>&1 | tee scan.log
           echo "code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
 
       - name: Heartbeat
@@ -46,6 +50,7 @@ jobs:
 
       - name: Commit
         id: commit
+        shell: bash
         run: |
           git config user.name "pspdx-scan"
           git config user.email "pspdx-scan@users.noreply.github.com"
@@ -67,19 +72,19 @@ jobs:
       # entry keeps the release that installs, and a person gets told.
       - name: Report what needs a person
         if: steps.scan.outputs.code != '0'
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh issue create \
-            --title "Scan needs a person ($(date -u +%Y-%m-%d))" \
-            --body "$(printf 'A release could not be taken over unchanged.\n\n```\n%s\n```' "$(tail -40 scan.log)")"
+          body="$(printf 'A release could not be taken over unchanged, so those packages still point at the last one that worked.\n\n```\n%s\n```\n\n[the run](%s)' \
+                  "$(tail -40 scan.log)" \
+                  "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID")"
+          # One open issue, not one per hour.
+          open="$(gh issue list --state open --label scan --limit 1 --json number --jq '.[0].number')"
+          if [ -n "$open" ]; then
+            gh issue comment "$open" --body "$body"
+          else
+            gh label create scan --color ededed --description "Raised by the scan" 2>/dev/null || true
+            gh issue create --title "The scan needs a person" --label scan --body "$body"
+          fi
           exit 1
-
-  deploy:
-    needs: scan
-    if: needs.scan.outputs.pushed == 'yes'
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    uses: ./.github/workflows/build-catalog.yml

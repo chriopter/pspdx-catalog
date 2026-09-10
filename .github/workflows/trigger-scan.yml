@@ -27,24 +27,47 @@ jobs:
 
       - name: Rescan
         id: rescan
+        # bash, so that the pipe into tee cannot swallow a failure: without it
+        # a scan that refused to publish was reported as "already current".
+        shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
           TITLE: ${{ github.event.issue.title }}
           NUMBER: ${{ github.event.issue.number }}
         run: |
-          url="$(echo "$TITLE" | sed -E 's/^rescan:[[:space:]]*//' | tr -d ' ')"
-          if ! grep -rqiF "\"$url\"" apps/*/app.json; then
-            gh issue comment "$NUMBER" --body "\`$url\` is not listed here yet, so this is not a rescan but a request to be added. Leaving it open for a person to read."
+          set -o pipefail
+          url="$(printf '%s' "$TITLE" | sed -E 's/^[Rr]escan:[[:space:]]*//' \
+                 | tr -d '[:space:]')"
+          if [ -z "$url" ]; then
+            gh issue comment "$NUMBER" --body "Nothing after \`rescan:\` — the title needs the repository URL, like \`rescan: https://github.com/user/repo\`."
             exit 0
           fi
+
+          # scan.py answers this, normalising the URL the same way it does
+          # everywhere else. A grep over app.json matched any field: an issue
+          # titled "rescan: MIT" got through on a licence.
+          if ! python3 scan.py --listed "$url"; then
+            gh issue comment "$NUMBER" --body "\`$url\` is not listed here yet, so this is a request to be added rather than a rescan. Leaving it open for a person to read."
+            exit 0
+          fi
+
+          set +e
           python3 scan.py "$url" 2>&1 | tee scan.log
+          code=${PIPESTATUS[0]}
+          set -e
+          if [ "$code" -ne 0 ]; then
+            gh issue comment "$NUMBER" --body "$(printf 'The scan refused this release, so the catalog still points at the last one that worked.\n\n```\n%s\n```\n\n[the run](%s)' "$(tail -20 scan.log)" "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID")"
+            echo "pushed=no" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
           git config user.name "pspdx-scan"
           git config user.email "pspdx-scan@users.noreply.github.com"
           git add apps/*/latest.json
           if git diff --cached --quiet; then
             echo "pushed=no" >> "$GITHUB_OUTPUT"
-            gh issue comment "$NUMBER" --body "Already current -- nothing changed."
+            gh issue comment "$NUMBER" --body "Already the newest release — nothing changed."
           else
             echo "pushed=yes" >> "$GITHUB_OUTPUT"
             git commit -m "Refresh $url, asked for in #$NUMBER"

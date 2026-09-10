@@ -9,6 +9,7 @@ and looks inside to see where the EBOOT sits.
     scan.py https://github.com/user/repo   add that repository
     scan.py --all                          refresh every entry
     scan.py --all --check                  report what would change, write nothing
+    scan.py --listed <url>                 exit 0 if that repository is listed
 
 Two files per app, and the split is deliberate. `app.json` is a person's:
 what the app is called, who wrote it, which licence, which asset to take.
@@ -281,6 +282,12 @@ def main(argv):
     if not argv:
         raise SystemExit(__doc__)
 
+    listed_only = argv[0] == "--listed"
+    if listed_only:
+        argv = argv[1:]
+        if not argv:
+            raise SystemExit(__doc__)
+
     # An id is not derivable from a repository name -- the app may well be
     # called something else -- so an existing one is found by its repo URL.
     def norm(u):
@@ -297,6 +304,9 @@ def main(argv):
     if len(found) > 1:
         raise SystemExit("  listed twice: "
                          + ", ".join(d.name for d, _ in found))
+
+    if listed_only:
+        return 0 if found else 1
 
     fresh = not found
     if fresh:
