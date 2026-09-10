@@ -1,8 +1,8 @@
 {
-  "rev": 1789070623,
-  "version": "0.2.0",
-  "url": "https://github.com/chriopter/psp-rust-raytracer/releases/download/v0.2.0/ray.zip",
-  "sha256": "f086e55c041081412b644fc1526b4e1a7dcd840180bcb19f73ae06d5569b62d5",
-  "size": 86332,
+  "rev": 1789070828,
+  "version": "0.3.0",
+  "url": "https://github.com/chriopter/psp-rust-raytracer/releases/download/v0.3.0/ray.zip",
+  "sha256": "50c41999c64241cc09b7b0eeda4535639fee21ff8e9a6f443799c529903144a2",
+  "size": 86331,
   "root": "PSP/GAME/RustRaytracer/"
 }
