@@ -1,14 +1,11 @@
 # PSPDX catalog
 
-This is the list of apps that [PSPDX](https://github.com/chriopter/pspdx) shows
-on the PSP. One file per app, all of them served as a single
-[catalog.json](https://chriopter.github.io/pspdx-catalog/catalog.json) that the
-console downloads.
+The list of apps [PSPDX](https://github.com/chriopter/pspdx) shows on the PSP.
+One file per app, served as one
+[catalog.json](https://chriopter.github.io/pspdx-catalog/catalog.json).
+Downloads come from your own GitHub release, not from here.
 
-Downloads are not hosted here. Your app is downloaded from your own GitHub
-release.
-
-## Currently listed apps
+## Listed
 
 | | | |
 |---|---|---|
@@ -17,72 +14,34 @@ release.
 | **[PSPDX Test App](https://github.com/chriopter/psp-dx-testapp)** | apps · MIT | 2 |
 | **[Rust Raytracer](https://github.com/chriopter/psp-rust-raytracer)** | demos · MIT | 0.1.0 |
 
-This list is written by hand for now.
+## Get listed
 
-## How to get your app listed
+A pull request adding `apps/<id>/app.json` — copy
+[an existing one](apps/io.github.chriopter.rustraytracer/app.json). Or open an
+issue and ask. Open source licences only.
 
-Open a pull request that adds one file, `apps/<id>/app.json`:
+## Release your app
 
-```json
-{
-  "id": "io.github.<your-user>.<your-app>",
-  "name": "Your App",
-  "author": "<your-user>",
-  "summary": "One line, short enough for a PSP screen.",
-  "category": "games",
-  "license": "MIT",
-  "repo": "https://github.com/<your-user>/<your-repo>"
-}
-```
+One `.zip` on a GitHub release, with an `EBOOT.PBP` anywhere inside it.
+Everything the app needs goes in the EBOOT's folder or below: that folder is
+what lands on the Memory Stick.
 
-Or open an issue and ask, and someone will write it for you. The licence has
-to be an open source one. You do not have to change anything in your own
-project.
+More than one file attached? Say which: `"archive": { "asset": "*-psp.zip" }`.
 
-## How to release your app
+## Staying current
 
-Attach **one `.zip`** to a GitHub release. It has to contain an `EBOOT.PBP`.
+Checked hourly. A new release is downloaded, checked and entered on its own —
+you tell us nothing. Faster: open an issue titled `rescan: <repo url>`.
 
-- **Where the EBOOT sits does not matter.** `MyApp/EBOOT.PBP`, or straight in
-  the root of the zip, or `PSP/GAME/MyApp/EBOOT.PBP` — all fine.
-- **Put everything your app needs in the same folder as the EBOOT, or below
-  it.** That folder is what ends up on the Memory Stick. A `LICENSE` or a
-  `README` next to it is ignored and can stay.
-- **Attaching more files than the zip is fine**, but then say which one is the
-  app: add `"archive": { "asset": "*-psp.zip" }` to your entry.
-- `.7z` and `.rar` cannot be read.
+Move the EBOOT somewhere else and the catalog stays put, with an issue, rather
+than shipping something that will not install.
 
-## How the catalog stays up to date
-
-Every hour, a script asks GitHub whether any listed app has a newer release.
-If one has, it downloads the zip, checks what is inside, and writes the new
-version, URL and checksum into that app's file. The catalog is rebuilt a
-minute later. **You do not have to tell us anything.**
-
-Do not want to wait the hour? Open an issue titled `rescan: <your repo url>`.
-
-If a new release moves the EBOOT somewhere else, the catalog is **not**
-updated. An issue is opened instead, so that nobody downloads something that
-will not install.
-
-## Files in this repository
-
-One directory per app, named after the `id` in it —
-[here is one](apps/io.github.chriopter.rustraytracer):
+## Files
 
 | | |
 |---|---|
-| [`app.json`](apps/io.github.chriopter.rustraytracer/app.json) | The entry. You write the top half, `scan.py` writes the rest. |
-| `icon.png` | 144x80, taken out of the EBOOT. Optional. |
-| [`screenshot.png`](apps/io.github.chriopter.rustraytracer/screenshot.png) | 480x272. Optional. |
-| [`video.mp4`](apps/io.github.chriopter.rustraytracer/video.mp4) | Ten seconds, H.264 baseline. Optional. |
-
-And the scripts that keep it running:
-
-| | |
-|---|---|
-| [`scan.py`](scan.py) | Looks for new releases, downloads them, checks them. |
-| [`build.py`](build.py) | Turns every entry into one `catalog.json`. |
-| [`hourly-scan.yml`](.github/workflows/hourly-scan.yml) | Runs the scan every hour. |
-| [`trigger-scan.yml`](.github/workflows/trigger-scan.yml) | Runs it for one app when an issue asks. |
-| [`build-catalog.yml`](.github/workflows/build-catalog.yml) | Publishes the catalog. |
+| [`app.json`](apps/io.github.chriopter.rustraytracer/app.json) | The entry. You write the top half. |
+| `icon.png` · [`screenshot.png`](apps/io.github.chriopter.rustraytracer/screenshot.png) · [`video.mp4`](apps/io.github.chriopter.rustraytracer/video.mp4) | 144x80, 480x272, ten seconds. All optional. |
+| [`scan.py`](scan.py) | Finds new releases, downloads, checks. |
+| [`build.py`](build.py) | Builds `catalog.json`. |
+| [`.github/workflows/`](.github/workflows) | Hourly, on request, and publishing. |
