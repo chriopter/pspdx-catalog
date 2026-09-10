@@ -1,0 +1,83 @@
+name: Scan
+
+on:
+  schedule:
+    # Hourly, because a 304 from GitHub costs nothing against the rate limit
+    # and nobody wants to wait until tomorrow to see their release listed.
+    - cron: "17 * * * *"
+    # Weekly, and this one leaves a commit even when nothing changed: GitHub
+    # switches scheduled workflows off after 60 days without repository
+    # activity, and a quiet index would switch itself off.
+    - cron: "23 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      repo:
+        description: "Repository URL to scan. Empty scans every entry."
+        required: false
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    outputs:
+      pushed: ${{ steps.commit.outputs.pushed }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan
+        id: scan
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          python3 scan.py ${{ inputs.repo || '--all' }} 2>&1 | tee scan.log
+          echo "code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Heartbeat
+        if: github.event.schedule == '23 6 * * 1'
+        run: date -u +%Y-%m-%dT%H:%M:%SZ > .scanned
+
+      - name: Commit
+        id: commit
+        run: |
+          git config user.name "pspdx-scan"
+          git config user.email "pspdx-scan@users.noreply.github.com"
+          git add apps
+          if [ -f .scanned ]; then git add .scanned; fi
+          if git diff --cached --quiet; then
+            echo "nothing changed"; echo "pushed=no" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          echo "pushed=yes" >> "$GITHUB_OUTPUT"
+          git commit -m "Refresh what upstream has published
+
+          Written by scan.py: rev, url, sha256 and size come from the release
+          GitHub served and the bytes it actually sent."
+          git push
+
+      # An upstream that moved its package is not something to paper over: the
+      # entry keeps the release that installs, and a person gets told.
+      - name: Report what needs a person
+        if: steps.scan.outputs.code != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --title "Scan needs a person ($(date -u +%Y-%m-%d))" \
+            --body "$(printf 'A release could not be taken over unchanged.\n\n```\n%s\n```' "$(tail -40 scan.log)")"
+          exit 1
+
+  deploy:
+    needs: scan
+    if: needs.scan.outputs.pushed == 'yes'
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/pages.yml

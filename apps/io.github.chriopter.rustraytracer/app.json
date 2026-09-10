@@ -1,0 +1,21 @@
+{
+  "id": "io.github.chriopter.rustraytracer",
+  "name": "Rust Raytracer",
+  "author": "chriopter",
+  "summary": "Real-time ray tracing on a 333 MHz MIPS CPU.",
+  "category": "demos",
+  "license": "MIT",
+  "repo": "https://github.com/chriopter/psp-rust-raytracer",
+  "archive": {
+    "asset": "*.zip",
+    "root": "PSP/GAME/RustRaytracer/",
+    "etag": "\"3a9a1799c6818065a132d526a890c311fc19c065885ad0d9454f1c0c6b7ce944\""
+  },
+  "release": {
+    "rev": 1789044620,
+    "version": "0.1.0",
+    "url": "https://github.com/chriopter/psp-rust-raytracer/releases/download/v0.1.0/psp-rust-raytracer.zip",
+    "sha256": "958acfa02c94819fa4431f24402a9b3bea5135d9909d85d104c72a3b08392f31",
+    "size": 66204
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "id": "io.github.chriopter.abandonedtestapp",
+  "name": "Abandoned Test App",
+  "author": "chriopter",
+  "summary": "Released once, never touched again.",
+  "category": "apps",
+  "license": "MIT",
+  "repo": "https://github.com/chriopter/psp-dx-testapp-abandoned",
+  "rev": 1789055771,
+  "url": "https://github.com/chriopter/psp-dx-testapp-abandoned/releases/download/v1/pspdx-testapp-abandoned.zip",
+  "sha256": "8765ce171bb5dcf99de6d16fcf33bb791b68ec71d5fe890f82fdb4c1e4b8a81f",
+  "size": 69127,
+  "requires": {
+    "ram_mb": 32
+  },
+  "archive": {
+    "asset": "*.zip",
+    "root": "PSP/GAME/PSPDXTestAbandoned/",
+    "etag": "\"bcef340c2699c6fb165120dd18e9afaab8d648e2472bfea820a7b911a404e2bb\""
+  },
+  "release": {
+    "rev": 1789055771,
+    "version": "1",
+    "url": "https://github.com/chriopter/psp-dx-testapp-abandoned/releases/download/v1/pspdx-testapp-abandoned.zip",
+    "sha256": "8765ce171bb5dcf99de6d16fcf33bb791b68ec71d5fe890f82fdb4c1e4b8a81f",
+    "size": 69127
+  }
+}

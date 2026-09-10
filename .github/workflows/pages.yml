@@ -1,0 +1,63 @@
+name: Pages
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+  # Called by scan.yml: a push it makes with GITHUB_TOKEN triggers nothing on
+  # its own, so the deploy has to be asked for explicitly.
+  workflow_call:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never cancel a deploy that is already running; queue behind it instead.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      # The tip of master, not the commit that triggered this run: when the
+      # scan calls this workflow it has just pushed, and the triggering SHA is
+      # the tree from before its own commit.
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+
+
+      - uses: actions/configure-pages@v5
+
+      - name: Generate site
+        run: |
+          mkdir -p _site
+          python3 build.py _site/catalog.json
+          cat > _site/index.html <<'HTML'
+          <!doctype html>
+          <meta charset="utf-8">
+          <title>PSPDX catalog</title>
+          <h1>PSPDX catalog</h1>
+          <p>The index the PSP client fetches:
+          <a href="catalog.json">catalog.json</a>.</p>
+          <p>The client, and what these files mean, are at
+          <a href="https://github.com/chriopter/pspdx">github.com/chriopter/pspdx</a>.
+          To get an app listed, open a pull request here.</p>
+          HTML
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
