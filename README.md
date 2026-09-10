@@ -29,28 +29,34 @@ Maintained by hand for now; the versions come from the last scan.
 ## How a release gets here
 
 ```
-                hourly-scan  ·  every hour
-                          |
-                          v
-                 scan.py asks GitHub
-                          |
-          +---------------+---------------+
-          |                               |
-          v                               v
-   304, unchanged                  a newer release
-          |                               |
-          v                               v
-        done                 download · hash · look inside
-                                          |
-                                          v
-  a person edits an entry  ----->  commit the app.json
-                                          |
-                                          v
-                              build-catalog  ·  build.py
-                                          |
-                                          v
+              hourly-scan  ·  every hour
+                        |
+                        v
+               scan.py asks GitHub
+                        |
+            +-----------+-----------+
+            |                       |
+            v                       v
+     304, unchanged          a newer release
+            |                       |
+            v                       v
+          done        download · hash · look inside
+                                    |
+                                    v
+                        scan.py commits the entry
+                                    |
+                                    |    a pull request, or you
+                                    |    fixing a line by hand
+                                    |              |
+                                    +-------+------+
+                                            |
+                                            v
+                          any commit runs build-catalog
+                                            |
+                                            v
               catalog.json  ·  shots/  ·  vids/  on Pages
 ```
+
 
 `scan.py` reads releases, never repositories. It rewrites `release` and
 `archive` and nothing else — name, summary, category and licence stay as a
