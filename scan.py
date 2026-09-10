@@ -10,9 +10,10 @@ and looks inside to see where the EBOOT sits.
     scan.py --all                          refresh every entry
     scan.py --all --check                  report what would change, write nothing
 
-An entry is two halves. Everything above `release` is written by a person and
-never touched here; `release` and `archive` are this script's and nobody
-edits them by hand.
+Two files per app, and the split is deliberate. `app.json` is a person's:
+what the app is called, who wrote it, which licence, which asset to take.
+Nothing automated ever writes it. `latest.json` is this script's, rewritten
+whole, and nobody edits it by hand.
 
 No dependencies beyond the standard library: this runs in a workflow and
 should keep running in ten years.
@@ -28,6 +29,7 @@ import sys
 import urllib.error
 import urllib.request
 import zipfile
+from datetime import datetime
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -49,24 +51,17 @@ def token():
         return None
 
 
-def api(path, etag=None):
-    """Returns (json, etag), or (None, etag) for 304 -- which GitHub does not
-    count against the rate limit, so an hourly scan of an unchanged repository
-    is free."""
+def api(path):
+    """One small GET. Conditional requests were tried and dropped: the release
+    JSON carries each asset's download_count, so its ETag changes whenever
+    anybody downloads anything, and a 304 almost never arrives."""
     req = urllib.request.Request("https://api.github.com" + path)
     req.add_header("Accept", "application/vnd.github+json")
     t = token()
     if t:
         req.add_header("Authorization", "Bearer " + t)
-    if etag:
-        req.add_header("If-None-Match", etag)
-    try:
-        with urllib.request.urlopen(req, timeout=30) as r:
-            return json.load(r), r.headers.get("ETag")
-    except urllib.error.HTTPError as e:
-        if e.code == 304:
-            return None, etag
-        raise
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return json.load(r)
 
 
 def fetch(url):
@@ -105,46 +100,41 @@ def eboot_root(raw):
     return path.rsplit("/", 1)[0] + "/" if "/" in path else ""
 
 
-def scan(entry, check=False):
-    """Returns True if the entry changed. Leaves the human half alone."""
-    m = GITHUB.match(entry["repo"])
+def scan(app, state, check=False):
+    """Refreshes `state` from the newest release. Never touches `app`."""
+    m = GITHUB.match(app["repo"])
     if not m:
-        raise SystemExit(f"  {entry['repo']} is not a GitHub repository")
+        raise SystemExit(f"  {app['repo']} is not a GitHub repository")
     owner, repo = m.group(1), m.group(2)
 
-    archive = entry.setdefault("archive", {})
-    rel, etag = api(f"/repos/{owner}/{repo}/releases/latest", archive.get("etag"))
-    if rel is None:
-        return False                       # 304: nothing has been published
-    published = rel["published_at"]
-    rev = int(__import__("datetime").datetime.fromisoformat(
-        published.replace("Z", "+00:00")).timestamp())
-    if entry.get("release", {}).get("rev") == rev:
-        archive["etag"] = etag
+    rel = api(f"/repos/{owner}/{repo}/releases/latest")
+    rev = int(datetime.fromisoformat(
+        rel["published_at"].replace("Z", "+00:00")).timestamp())
+    if state.get("rev") == rev:
         return False
 
-    asset = pick_asset(rel, archive.get("asset", DEFAULT_ASSET))
+    asset = pick_asset(rel, app.get("asset", DEFAULT_ASSET))
     raw = fetch(asset["browser_download_url"])
     root = eboot_root(raw)
 
-    # A layout that moved is not something to publish quietly: the entry keeps
+    # A layout that moved is not something to publish quietly: the app keeps
     # the release that is known to install, and a person is told what changed.
-    if "root" in archive and archive["root"] != root:
+    if "root" in state and state["root"] != root:
         raise SystemExit(f"  {rel['tag_name']} moved the package: "
-                         f"expected {archive['root']!r}, found {root!r}\n"
-                         "  fix archive.root if the new layout is right")
+                         f"expected {state['root']!r}, found {root!r}\n"
+                         "  delete latest.json if the new layout is right")
 
     if check:
         return True
-    archive.update({"asset": archive.get("asset", DEFAULT_ASSET),
-                    "root": root, "etag": etag})
-    entry["release"] = {
+    state.clear()
+    state.update({
         "rev": rev,
         "version": rel["tag_name"].lstrip("v"),
         "url": asset["browser_download_url"],
         "sha256": hashlib.sha256(raw).hexdigest(),
         "size": asset["size"],
-    }
+        "root": root,
+    })
     return True
 
 
@@ -166,36 +156,43 @@ def new_entry(url):
     }
 
 
-def save(entry):
-    d = APPS / entry["id"]
+def save_state(app_id, state):
+    d = APPS / app_id
     d.mkdir(parents=True, exist_ok=True)
-    (d / "app.json").write_text(json.dumps(entry, indent=2) + "\n")
-    return d / "app.json"
+    (d / "latest.json").write_text(json.dumps(state, indent=2) + "\n")
+    return d / "latest.json"
+
+
+def load_state(app_id):
+    p = APPS / app_id / "latest.json"
+    return json.loads(p.read_text()) if p.exists() else {}
 
 
 def main(argv):
     check = "--check" in argv
     argv = [a for a in argv if a != "--check"]
+
     if argv and argv[0] == "--all":
         changed, broken = [], []
         for p in sorted(APPS.glob("*/app.json")):
-            entry = json.loads(p.read_text())
-            if entry.get("scan") is False:
+            app = json.loads(p.read_text())
+            if app.get("scan") is False:
                 continue
-            print(entry["id"])
+            print(app["id"])
             # One app whose upstream moved must not stop the other forty from
             # being refreshed, so a failure is collected rather than raised.
             try:
-                if scan(entry, check):
-                    changed.append(entry["id"])
+                state = load_state(app["id"])
+                if scan(app, state, check):
+                    changed.append(app["id"])
                     if not check:
-                        save(entry)
+                        save_state(app["id"], state)
             except SystemExit as e:
                 print(str(e))
-                broken.append(f"{entry['id']}:{e}")
+                broken.append(f"{app['id']}:{e}")
             except Exception as e:
                 print(f"  {type(e).__name__}: {e}")
-                broken.append(f"{entry['id']}: {type(e).__name__}: {e}")
+                broken.append(f"{app['id']}: {type(e).__name__}: {e}")
         print(f"{len(changed)} changed" + (": " + ", ".join(changed) if changed else ""))
         if broken:
             print(f"{len(broken)} need a person:")
@@ -203,25 +200,38 @@ def main(argv):
                 print(b)
             return 1
         return 0
+
     if not argv:
         raise SystemExit(__doc__)
-    # An id is not derivable from a repository name -- the entry may well be
-    # called something else -- so an existing entry is found by its repo URL.
+
+    # An id is not derivable from a repository name -- the app may well be
+    # called something else -- so an existing one is found by its repo URL.
     want = argv[0].rstrip("/").removesuffix(".git").lower()
-    entry = None
+    app = None
     for q in sorted(APPS.glob("*/app.json")):
         e = json.loads(q.read_text())
         if e["repo"].rstrip("/").lower() == want:
-            entry = e
+            app = e
             break
-    if entry is None:
-        entry = new_entry(argv[0])
-    print(entry["id"])
-    scan(entry, check)
-    if not check:
-        print("->", save(entry))
-    else:
-        print(json.dumps(entry, indent=2))
+
+    # The only place app.json is ever written, and only when there is none:
+    # a draft for a person to correct before committing it.
+    fresh = app is None
+    if fresh:
+        app = new_entry(argv[0])
+
+    print(app["id"])
+    state = load_state(app["id"])
+    scan(app, state, check)
+    if check:
+        print(json.dumps({"app": app, "latest": state}, indent=2))
+        return 0
+    if fresh:
+        d = APPS / app["id"]
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "app.json").write_text(json.dumps(app, indent=2) + "\n")
+        print("-> ", d / "app.json", "  (a draft; read it before committing)")
+    print("->", save_state(app["id"], state))
     return 0
 
 

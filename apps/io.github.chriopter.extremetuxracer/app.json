@@ -5,17 +5,5 @@
   "summary": "Downhill racing with a penguin.",
   "category": "games",
   "license": "GPL-2.0",
-  "repo": "https://github.com/chriopter/psp-tuxracer",
-  "archive": {
-    "asset": "*.zip",
-    "root": "PSP/GAME/ExtremeTuxRacer/",
-    "etag": "\"33e694ae1ad7786a001c33473ba18d9d88efcdbf1afbff05abd32cdfaf4145ad\""
-  },
-  "release": {
-    "rev": 1789046256,
-    "version": "0.21.0",
-    "url": "https://github.com/chriopter/psp-tuxracer/releases/download/v0.21.0/extremetuxracer-psp.zip",
-    "sha256": "807b7e08e3ac6e791b12025cef617a72c920c0d98fd5d38c59d70784262c5be2",
-    "size": 44048464
-  }
+  "repo": "https://github.com/chriopter/psp-tuxracer"
 }

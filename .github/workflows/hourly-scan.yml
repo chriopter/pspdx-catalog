@@ -49,7 +49,9 @@ jobs:
         run: |
           git config user.name "pspdx-scan"
           git config user.email "pspdx-scan@users.noreply.github.com"
-          git add apps
+          # Only latest.json. app.json is a person's, and no workflow of
+          # ours is going to be the thing that quietly rewrites a summary.
+          git add apps/*/latest.json
           if [ -f .scanned ]; then git add .scanned; fi
           if git diff --cached --quiet; then
             echo "nothing changed"; echo "pushed=no" >> "$GITHUB_OUTPUT"; exit 0

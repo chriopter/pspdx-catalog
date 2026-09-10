@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Folds apps/*/app.json into one catalog.json for the client.
+"""Folds apps/*/{app.json,latest.json} into one catalog.json for the client.
 
 One directory per app is what gets edited -- one package per pull request, no
 merge conflicts, and a place to put the icon next to the metadata it belongs
@@ -22,7 +22,9 @@ REQUIRED = ("id", "name", "author", "summary", "category", "license", "repo")
 # it came from and which version of the format it is.
 SCHEMA = "https://github.com/chriopter/pspdx/blob/master/manifest.md"
 
-# What scan.py fills in, and what the client needs to install anything.
+# What scan.py writes into latest.json, and what the client needs in order to
+# install anything. `root` stays here: the console works the layout out of the
+# archive itself.
 RELEASE = ("rev", "url", "sha256", "size")
 
 # Optional file in an app directory -> where it is served, and the field that
@@ -36,7 +38,8 @@ ASSETS = {
 
 
 def load(path):
-    """path is <id>/app.json; the directory name is the id."""
+    """path is <id>/app.json. The directory name is the id, and latest.json
+    beside it is what scan.py last saw."""
     with path.open(encoding="utf-8") as f:
         app = json.load(f)
     missing = [k for k in REQUIRED if k not in app]
@@ -44,21 +47,28 @@ def load(path):
         sys.exit(f"{path.parent.name}: missing {', '.join(missing)}")
     if app["id"] != path.parent.name:
         sys.exit(f"{path.parent.name}: id {app['id']!r} does not match the directory")
+
+    state = path.parent / "latest.json"
+    if not state.exists():
+        sys.exit(f"{path.parent.name}: no latest.json; run scan.py")
+    with state.open(encoding="utf-8") as f:
+        latest = json.load(f)
+    missing = [k for k in RELEASE if k not in latest]
+    if missing:
+        sys.exit(f"{path.parent.name}: latest.json is missing "
+                 f"{', '.join(missing)}; run scan.py")
+
+    # asset and scan steer the scanner, root is how it recognises the next
+    # release. None of the three is any of the console's business.
+    app.pop("asset", None)
+    app.pop("scan", None)
+    app["release"] = {k: v for k, v in latest.items() if k != "root"}
     return app
 
 
 def main(out):
     out = Path(out)
     apps = [load(p) for p in sorted((HERE / "apps").glob("*/app.json"))]
-    for app in apps:
-        missing = [k for k in RELEASE if k not in app.get("release", {})]
-        if missing:
-            sys.exit(f"{app['id']}: release is missing {', '.join(missing)}; "
-                     "run scan.py")
-        # archive is how scan.py recognises the next release. The client works
-        # the layout out for itself, so it never leaves this repository.
-        app.pop("archive", None)
-        app.pop("scan", None)
 
     # Assets are never named by hand: an entry gets the field only if the file
     # is there, so the client never spends a request discovering a 404.

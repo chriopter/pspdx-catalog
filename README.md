@@ -22,7 +22,9 @@ source licences only.
 }
 ```
 
-That is all you write. `scan.py` fills in the version, URL and checksum.
+That is all you write. The version, URL and checksum land in a second file,
+`latest.json`, which the scanner owns — no workflow here ever writes
+`app.json`.
 
 ## Release your app
 
@@ -30,7 +32,7 @@ One `.zip` on a GitHub release, with an `EBOOT.PBP` anywhere inside it.
 Everything the app needs goes in the EBOOT's folder or below: that folder is
 what lands on the Memory Stick.
 
-More than one file attached? Say which: `"archive": { "asset": "*-psp.zip" }`.
+More than one file attached? Say which, in `app.json`: `"asset": "*-psp.zip"`.
 
 ## Auto refresh
 
@@ -47,7 +49,8 @@ One directory per app, named after the `id` in it —
 
 | | |
 |---|---|
-| [`app.json`](apps/io.github.chriopter.rustraytracer/app.json) | The entry. You write the top half. |
+| [`app.json`](apps/io.github.chriopter.rustraytracer/app.json) | Yours. Name, licence, repository. Never touched by automation. |
+| [`latest.json`](apps/io.github.chriopter.rustraytracer/latest.json) | The scanner's. Version, URL, checksum. Never edited by hand. |
 | `icon.png` | 144x80, out of the EBOOT. Optional. |
 | [`screenshot.png`](apps/io.github.chriopter.rustraytracer/screenshot.png) | 480x272. Optional. |
 | [`video.mp4`](apps/io.github.chriopter.rustraytracer/video.mp4) | Ten seconds, H.264 baseline. Optional. |

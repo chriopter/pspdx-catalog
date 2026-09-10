@@ -5,17 +5,5 @@
   "summary": "A hello world that exists to be updated.",
   "category": "apps",
   "license": "MIT",
-  "repo": "https://github.com/chriopter/psp-dx-testapp",
-  "archive": {
-    "asset": "*.zip",
-    "root": "PSP/GAME/PSPDXTest/",
-    "etag": "\"6e30d49bce4fe1c182dd1538285b402f70c18ae15fd87a012f534cb75f235337\""
-  },
-  "release": {
-    "rev": 1789060223,
-    "version": "2",
-    "url": "https://github.com/chriopter/psp-dx-testapp/releases/download/v2/testapp-v2.zip",
-    "sha256": "e176112fd0d061728f744dc774a211f3c9d7a181c8a9c40f60f8aec18c59f4f9",
-    "size": 68987
-  }
+  "repo": "https://github.com/chriopter/psp-dx-testapp"
 }
