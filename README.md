@@ -36,6 +36,9 @@ More than one file attached? Say which, in `app.json`: `"asset": "*-psp.zip"`.
 
 ## Auto refresh
 
+So that the PSP can show you that an app has a new version, the catalog has to
+know before the console asks. Nobody is going to tell it, so it goes and looks.
+
 Checked hourly. A new release is downloaded, checked and entered on its own —
 you tell us nothing. Faster: open an issue titled `rescan: <repo url>`.
 

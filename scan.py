@@ -108,14 +108,15 @@ def scan(app, state, check=False):
     owner, repo = m.group(1), m.group(2)
 
     rel = api(f"/repos/{owner}/{repo}/releases/latest")
-    rev = int(datetime.fromisoformat(
+    published = int(datetime.fromisoformat(
         rel["published_at"].replace("Z", "+00:00")).timestamp())
-    if state.get("rev") == rev:
+    if state.get("seen") == published:
         return False
 
     asset = pick_asset(rel, app.get("asset", DEFAULT_ASSET))
     raw = fetch(asset["browser_download_url"])
     root = eboot_root(raw)
+    sha = hashlib.sha256(raw).hexdigest()
 
     # A layout that moved is not something to publish quietly: the app keeps
     # the release that is known to install, and a person is told what changed.
@@ -126,12 +127,20 @@ def scan(app, state, check=False):
 
     if check:
         return True
+
+    # Two numbers, because a re-tagged release is not an update. `seen` is the
+    # release we last looked at and always moves; `rev` is the revision of the
+    # bytes and only moves when they do. Without that split, an author who
+    # tags the same build again costs every user the whole download.
+    same = state.get("sha256") == sha
+    rev = state["rev"] if same and "rev" in state else published
     state.clear()
     state.update({
         "rev": rev,
+        "seen": published,
         "version": rel["tag_name"].lstrip("v"),
         "url": asset["browser_download_url"],
-        "sha256": hashlib.sha256(raw).hexdigest(),
+        "sha256": sha,
         "size": asset["size"],
         "root": root,
     })
@@ -194,6 +203,16 @@ def main(argv):
                 print(f"  {type(e).__name__}: {e}")
                 broken.append(f"{app['id']}: {type(e).__name__}: {e}")
         print(f"{len(changed)} changed" + (": " + ", ".join(changed) if changed else ""))
+        # A commit that says which packages moved beats four identical ones.
+        out = os.environ.get("GITHUB_OUTPUT")
+        if out and changed:
+            names = [n for n in (json.loads((APPS / c / "app.json").read_text())
+                                 .get("name", c) for c in changed)]
+            line = ", ".join(names[:3])
+            if len(names) > 3:
+                line += f" and {len(names) - 3} more"
+            with open(out, "a") as f:
+                f.write(f"changed={line}\n")
         if broken:
             print(f"{len(broken)} need a person:")
             for b in broken:
