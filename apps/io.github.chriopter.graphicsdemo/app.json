@@ -1,0 +1,9 @@
+{
+  "id": "io.github.chriopter.graphicsdemo",
+  "name": "PSP Graphics Demo",
+  "author": "chriopter",
+  "summary": "Thirteen Graphics Engine tricks, one scene each.",
+  "category": "demos",
+  "license": "BSD-3-Clause",
+  "repo": "https://github.com/chriopter/psp-graphicsdemo"
+}
