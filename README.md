@@ -28,20 +28,55 @@ Maintained by hand for now; the versions come from the last scan.
 
 ## How a release gets here
 
-```mermaid
-flowchart TD
-    S["hourly-scan runs scan.py"] --> Q{"newer release?"}
-    Q -- "no, a 304" --> Z["done, and it cost nothing"]
-    Q -- yes --> D["download it, hash it, look inside"]
-    D --> C["commit the changed app.json"]
-    H["someone edits an entry by hand"] --> C
-    C --> B["build-catalog runs build.py"]
-    B --> P["catalog.json, shots/, vids/ on Pages"]
+```
+                hourly-scan  ·  every hour
+                          |
+                          v
+                 scan.py asks GitHub
+                          |
+          +---------------+---------------+
+          |                               |
+          v                               v
+   304, unchanged                  a newer release
+          |                               |
+          v                               v
+        done                 download · hash · look inside
+                                          |
+                                          v
+  a person edits an entry  ----->  commit the app.json
+                                          |
+                                          v
+                              build-catalog  ·  build.py
+                                          |
+                                          v
+              catalog.json  ·  shots/  ·  vids/  on Pages
 ```
 
 `scan.py` reads releases, never repositories. It rewrites `release` and
 `archive` and nothing else — name, summary, category and licence stay as a
 person wrote them. Nothing is built unless something was committed.
+
+## What a release has to look like
+
+Nothing has to change in the author's project, but three things have to be
+true of the release:
+
+1. **One `.zip` attached.** More assets is fine, but then the entry has to say
+   which one, with a glob in `archive.asset` — half of all releases carry more
+   than one file. `.7z` and `.rar` cannot be opened.
+2. **An `EBOOT.PBP` somewhere inside it.** `X/EBOOT.PBP`, at the root, or
+   `PSP/GAME/X/EBOOT.PBP` all work: the shallowest one wins.
+3. **Everything the app needs sits beside that EBOOT or below it.** Its
+   directory *is* the package and goes onto the Memory Stick whole. Anything
+   above it — `LICENSES/`, a README, a source tarball — is ignored and can
+   stay in the zip.
+
+No manifest, no naming convention, no signature. The title in the XMB comes
+from the `PARAM.SFO` inside the EBOOT, which the toolchain already writes.
+
+Two ways to get it wrong: two EBOOTs at the same depth make the choice a coin
+toss — one zip is one package — and an archive that moves its package between
+releases is refused rather than published, with an issue instead.
 
 ## An app bundle
 
