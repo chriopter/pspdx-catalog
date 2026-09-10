@@ -58,6 +58,11 @@ def load(path):
         sys.exit(f"{path.parent.name}: latest.json is missing "
                  f"{', '.join(missing)}; run scan.py")
 
+    stray = [k for k in RELEASE + ("version",) if k in app]
+    if stray:
+        sys.exit(f"{path.parent.name}: app.json carries {', '.join(stray)}; "
+                 "that belongs in latest.json, and the scanner owns it")
+
     # asset and scan steer the scanner, root is how it recognises the next
     # release. None of the three is any of the console's business.
     app.pop("asset", None)
