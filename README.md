@@ -1,17 +1,12 @@
 # PSPDX catalog
 
-The catalog [PSPDX](https://github.com/chriopter/pspdx) fetches. One directory
-per app in `apps/`, folded into a single
+The catalog [PSPDX](https://github.com/chriopter/pspdx) fetches: one directory
+per app, folded into a single
 [catalog.json](https://chriopter.github.io/pspdx-catalog/catalog.json) and
 served from Pages.
 
-What the files mean, how a release finds its way in here, and why any of it is
-shaped this way: **[see the main repository](https://github.com/chriopter/pspdx)**.
-
-- **To get an app listed** — open a pull request adding `apps/<id>/app.json`,
-  or open an issue and ask. Open source licences only.
-- **To have a release picked up now** rather than within the hour — open an
-  issue titled `rescan: <repo url>`.
+What the fields mean, and why any of it is shaped this way, lives in the
+[main repository](https://github.com/chriopter/pspdx).
 
 ## Currently listed apps
 
@@ -24,9 +19,34 @@ shaped this way: **[see the main repository](https://github.com/chriopter/pspdx)
 
 Maintained by hand for now; the versions come from the last scan.
 
+## Getting in
+
+- **To have an app listed** — open a pull request adding `apps/<id>/app.json`,
+  or open an issue and ask. Open source licences only.
+- **To have a release picked up now** rather than within the hour — open an
+  issue titled `rescan: <repo url>`.
+
+## How a release gets here
+
+```mermaid
+flowchart TD
+    S["hourly-scan runs scan.py"] --> Q{"newer release?"}
+    Q -- "no, a 304" --> Z["done, and it cost nothing"]
+    Q -- yes --> D["download it, hash it, look inside"]
+    D --> C["commit the changed app.json"]
+    H["someone edits an entry by hand"] --> C
+    C --> B["build-catalog runs build.py"]
+    B --> P["catalog.json, shots/, vids/ on Pages"]
+```
+
+`scan.py` reads releases, never repositories. It rewrites `release` and
+`archive` and nothing else — name, summary, category and licence stay as a
+person wrote them. Nothing is built unless something was committed.
+
 ## An app bundle
 
-One directory per app, named after its id. Here is [a whole one](apps/io.github.chriopter.rustraytracer).
+One directory per app, named exactly after the `id` inside it. Here is
+[a whole one](apps/io.github.chriopter.rustraytracer).
 
 | | |
 |---|---|
