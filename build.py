@@ -9,13 +9,14 @@ so it must get everything in a single fetch.
 No dependencies beyond the standard library, on purpose: this runs in a Pages
 workflow and should keep running in ten years.
 """
-import html
 import json
 import re
 import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+import page
 
 HERE = Path(__file__).resolve().parent
 REQUIRED = ("id", "name", "author", "summary", "category", "license", "repo")
@@ -115,195 +116,6 @@ def load(path):
     return app
 
 
-PAGE = """<!doctype html>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PSPDX catalog</title>
-<style>
-  /* The XMB, more or less: a blue wave over near-black, thin wide type, and
-     icons at the size the console draws them. */
-  :root {{
-    --ink: #f2f6fb; --dim: #93a6bd; --faint: #5f7391;
-    --cyan: #7fd4ff; --rule: rgba(255,255,255,.10);
-  }}
-  * {{ box-sizing: border-box; }}
-  html {{ background: #04070d; }}
-  body {{
-    margin: 0; padding: 0 20px 72px; color: var(--ink); min-height: 100vh;
-    font: 15px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-    background:
-      radial-gradient(130% 70% at 50% -20%, #1d4478 0%, #0d1e3d 42%, #05090f 100%)
-      no-repeat, #04070d;
-    -webkit-font-smoothing: antialiased;
-  }}
-  #wave {{
-    position: fixed; inset: 0; z-index: 0; pointer-events: none;
-    width: 100%; height: 100%; display: block;
-  }}
-  .wrap {{ position: relative; z-index: 1; max-width: 1000px; margin: 0 auto; }}
-
-  header {{
-    display: flex; align-items: baseline; justify-content: space-between;
-    gap: 16px; flex-wrap: wrap;
-    padding: 34px 4px 14px; border-bottom: 1px solid var(--rule);
-  }}
-  h1 {{
-    margin: 0; font-size: 22px; font-weight: 300; letter-spacing: .38em;
-    text-transform: uppercase;
-  }}
-  h1 b {{ font-weight: 600; letter-spacing: .3em; }}
-  .status {{
-    font: 11px ui-monospace, SFMono-Regular, Menlo, monospace;
-    letter-spacing: .16em; text-transform: uppercase; color: var(--dim);
-    display: flex; gap: 16px; flex-wrap: wrap;
-  }}
-  .lede {{
-    margin: 22px 4px 30px; max-width: 62ch; color: var(--dim); font-weight: 300;
-  }}
-  a {{ color: var(--cyan); }}
-
-  .grid {{
-    display: grid; gap: 10px;
-    grid-template-columns: repeat(auto-fill, 176px);
-  }}
-  .app {{
-    display: block; text-decoration: none; color: inherit;
-    padding: 16px 16px 14px; border-radius: 4px;
-    background: rgba(255,255,255,.035);
-    border: 1px solid rgba(255,255,255,.07);
-    transition: background .18s ease, transform .18s ease, border-color .18s ease;
-  }}
-  .app:hover {{
-    background: rgba(255,255,255,.09); border-color: rgba(127,212,255,.45);
-    transform: translateY(-2px);
-  }}
-  .app img, .noicon {{
-    width: 144px; height: 80px; display: block;
-    box-shadow: 0 8px 18px rgba(0,0,0,.55);
-  }}
-  .noicon {{
-    display: grid; place-items: center; color: var(--dim); box-shadow: none;
-    border: 1px dashed var(--rule);
-    font: 10px ui-monospace, monospace; letter-spacing: .18em;
-  }}
-  .name {{
-    margin-top: 12px; font-size: 13.5px; line-height: 1.3; font-weight: 400;
-  }}
-  .app:hover .name {{ color: var(--cyan); }}
-  .ver {{
-    margin-top: 3px;
-    font: 11px ui-monospace, SFMono-Regular, Menlo, monospace;
-    letter-spacing: .08em; color: var(--dim);
-  }}
-  footer {{
-    margin-top: 40px; padding: 14px 4px 0; border-top: 1px solid var(--rule);
-    display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
-    font: 11px ui-monospace, SFMono-Regular, Menlo, monospace;
-    letter-spacing: .14em; text-transform: uppercase; color: var(--dim);
-  }}
-  .glyph {{
-    display: inline-grid; place-items: center; width: 15px; height: 15px;
-    border: 1px solid currentColor; border-radius: 50%; font-size: 9px;
-    vertical-align: -3px; margin-right: 5px;
-  }}
-</style>
-<canvas id="wave" aria-hidden="true"></canvas>
-<div class="wrap">
-  <header>
-    <h1><b>PSPDX</b> catalog</h1>
-    <div class="status">
-      <span>{count} apps</span>
-      <span>checked {generated}</span>
-      <span><a href="catalog.json">catalog.json</a></span>
-    </div>
-  </header>
-
-  <p class="lede">Homebrew for the PlayStation Portable, listed so that
-  <a href="https://github.com/chriopter/pspdx">PSPDX</a> on the console can
-  install it and tell you when there is a new version.</p>
-
-  <div class="grid">
-{cards}
-  </div>
-
-  <footer>
-    <span><span class="glyph">&#10005;</span>every download comes from its author&#39;s release</span>
-    <span><a href="https://github.com/chriopter/pspdx-catalog">add an app</a></span>
-  </footer>
-</div>
-
-<script>
-/* The XMB wave: bands of offset sine curves drifting past each other. Hand
-   written, because the console it is imitating is the whole point and a
-   dependency would outlive its own CDN. */
-(function () {{
-  var c = document.getElementById("wave"), x = c.getContext("2d");
-  var still = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  var w, h;
-
-  function size() {{
-    w = c.width = innerWidth;
-    h = c.height = innerHeight;
-  }}
-
-  function band(mid, amp, freq, phase, lines, alpha) {{
-    for (var i = 0; i < lines; i++) {{
-      var lift = (i - lines / 2) * (amp * 0.13);
-      x.beginPath();
-      for (var px = 0; px <= w; px += 8) {{
-        var u = px / w;
-        var y = mid + lift
-              + Math.sin(u * freq + phase + i * 0.10) * amp
-              + Math.sin(u * freq * 2.7 + phase * 1.6) * amp * 0.28;
-        px ? x.lineTo(px, y) : x.moveTo(px, y);
-      }}
-      x.strokeStyle = "rgba(158,214,255," + (alpha * (1 - Math.abs(i - lines / 2) / lines)) + ")";
-      x.lineWidth = 1;
-      x.stroke();
-    }}
-  }}
-
-  var t = 0;
-  function frame() {{
-    x.clearRect(0, 0, w, h);
-    band(h * 0.42, h * 0.075, 4.2, t,        16, 0.30);
-    band(h * 0.56, h * 0.055, 5.6, t * 0.7 + 2, 12, 0.20);
-    band(h * 0.70, h * 0.045, 3.4, -t * 0.5,    10, 0.13);
-    if (!still) {{
-      t += 0.004;
-      requestAnimationFrame(frame);
-    }}
-  }}
-
-  addEventListener("resize", function () {{ size(); if (still) frame(); }});
-  size();
-  frame();
-}})();
-</script>
-"""
-
-CARD = """    <a class="app" href="{repo}">
-      {art}
-      <div class="name">{name}</div>
-      <div class="ver">{version}</div>
-    </a>"""
-
-
-def write_page(apps, out):
-    """The page a person lands on. The console never reads it."""
-    e = html.escape
-    cards = []
-    for a in apps:
-        art = (f'<img src="{e(a["icon"])}" alt="" loading="lazy">'
-               if "icon" in a else '<div class="noicon">no icon</div>')
-        cards.append(CARD.format(art=art, repo=e(a["repo"]), name=e(a["name"]),
-                                 version=e(a["release"].get("version", ""))))
-    out.write_text(PAGE.format(
-        count=len(apps),
-        generated=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
-        cards="\n".join(cards)), encoding="utf-8")
-
-
 def main(out):
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -357,7 +169,7 @@ def main(out):
     # Compact separators: the client holds this in RAM, and the PSP has 24 MB.
     text = json.dumps(catalog, ensure_ascii=False, separators=(",", ":"))
     out.write_text(text + "\n", encoding="utf-8")
-    write_page(apps, out.parent / "index.html")
+    page.render(apps, out.parent)
     have = ", ".join(f"{sum(f in a for a in apps)} {f}s"
                      for _, f in ASSETS.values())   # counted after copying
     print(f"{len(apps)} apps, {have}, {len(text)} bytes -> {out}")
