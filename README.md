@@ -49,12 +49,22 @@ you tell us nothing. Faster: open an issue titled `rescan: <repo url>`.
 Move the EBOOT somewhere else and the catalog stays put, with an issue, rather
 than shipping something that will not install.
 
-## Files
+## App package format
+
+One directory per app, named after the `id` in it —
+[one of them](apps/io.github.chriopter.rustraytracer):
 
 | | |
 |---|---|
 | [`app.json`](apps/io.github.chriopter.rustraytracer/app.json) | The entry. You write the top half. |
-| `icon.png` · [`screenshot.png`](apps/io.github.chriopter.rustraytracer/screenshot.png) · [`video.mp4`](apps/io.github.chriopter.rustraytracer/video.mp4) | 144x80, 480x272, ten seconds. All optional. |
+| `icon.png` | 144x80, out of the EBOOT. Optional. |
+| [`screenshot.png`](apps/io.github.chriopter.rustraytracer/screenshot.png) | 480x272. Optional. |
+| [`video.mp4`](apps/io.github.chriopter.rustraytracer/video.mp4) | Ten seconds, H.264 baseline. Optional. |
+
+## Files
+
+| | |
+|---|---|
 | [`scan.py`](scan.py) | Finds new releases, downloads, checks. |
 | [`build.py`](build.py) | Builds `catalog.json`. |
 | [`.github/workflows/`](.github/workflows) | Hourly, on request, and publishing. |
