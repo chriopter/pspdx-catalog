@@ -35,7 +35,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 APPS = HERE / "apps"
-GITHUB = re.compile(r"https://github\.com/([^/]+)/([^/]+?)/?$")
+GITHUB = re.compile(r"https://github\.com/([^/]+)/([^/]+?)(?:\.git)?/?$")
 
 # A release with several assets has to be told apart; one .zip needs no rule.
 DEFAULT_ASSET = "*.zip"

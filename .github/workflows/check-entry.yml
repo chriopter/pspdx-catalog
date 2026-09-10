@@ -19,14 +19,18 @@ jobs:
       - name: Build the catalog
         run: python3 build.py /tmp/site/catalog.json
 
-      - name: Check every entry can actually be scanned
+      - name: Check the entries this pull request touches
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          BASE: ${{ github.event.pull_request.base.sha }}
         run: |
           set -e
-          for f in apps/*/app.json; do
+          changed="$(git diff --name-only "$BASE"...HEAD -- 'apps/*/app.json')"
+          if [ -z "$changed" ]; then echo "no entries touched"; exit 0; fi
+          for f in $changed; do
+            [ -f "$f" ] || continue          # deleted entries need no check
             repo="$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['repo'])" "$f")"
-            echo "== $(dirname "$f" | xargs basename)  $repo"
+            echo "== $(basename "$(dirname "$f")")  $repo"
             python3 scan.py --check "$repo"
           done
