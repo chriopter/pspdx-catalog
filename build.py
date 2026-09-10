@@ -77,98 +77,142 @@ PAGE = """<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PSPDX catalog</title>
 <style>
+  /* The XMB, more or less: a blue wave over near-black, thin wide type, and
+     icons at the size the console draws them. */
   :root {{
-    --ground: #eceeea; --card: #fff; --ink: #14181a; --dim: #5c665f;
-    --rule: #d6dcd6; --accent: #12702a;
-  }}
-  @media (prefers-color-scheme: dark) {{
-    :root {{
-      --ground: #080b09; --card: #111614; --ink: #e3e9e4; --dim: #8b968e;
-      --rule: #232c26; --accent: #3ed255;
-    }}
+    --ink: #f2f6fb; --dim: #93a6bd; --faint: #5f7391;
+    --cyan: #7fd4ff; --rule: rgba(255,255,255,.10);
   }}
   * {{ box-sizing: border-box; }}
+  html {{ background: #04070d; }}
   body {{
-    margin: 0; padding: 40px 20px 64px; background: var(--ground); color: var(--ink);
-    font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    margin: 0; padding: 0 20px 72px; color: var(--ink); min-height: 100vh;
+    font: 15px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    background:
+      radial-gradient(130% 70% at 50% -20%, #1d4478 0%, #0d1e3d 42%, #05090f 100%)
+      no-repeat, #04070d;
     -webkit-font-smoothing: antialiased;
   }}
-  .wrap {{ max-width: 960px; margin: 0 auto; }}
-  header {{ border-bottom: 1px solid var(--rule); padding-bottom: 20px; margin-bottom: 28px; }}
-  h1 {{ margin: 0 0 6px; font-size: 26px; letter-spacing: -.02em; }}
-  h1 span {{ color: var(--accent); }}
-  .lede {{ margin: 0; color: var(--dim); max-width: 60ch; }}
-  .meta {{
-    margin-top: 14px; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace;
-    color: var(--dim); display: flex; gap: 18px; flex-wrap: wrap;
+  .wave {{
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    opacity: .5; overflow: hidden;
   }}
-  a {{ color: var(--accent); }}
-  .grid {{ display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }}
+  .wave svg {{ position: absolute; top: 8%; left: -5%; width: 110%; height: 60%; }}
+  .wrap {{ position: relative; z-index: 1; max-width: 1000px; margin: 0 auto; }}
+
+  header {{
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 16px; flex-wrap: wrap;
+    padding: 34px 4px 14px; border-bottom: 1px solid var(--rule);
+  }}
+  h1 {{
+    margin: 0; font-size: 22px; font-weight: 300; letter-spacing: .38em;
+    text-transform: uppercase;
+  }}
+  h1 b {{ font-weight: 600; letter-spacing: .3em; }}
+  .status {{
+    font: 11px ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .16em; text-transform: uppercase; color: var(--dim);
+    display: flex; gap: 16px; flex-wrap: wrap;
+  }}
+  .lede {{
+    margin: 22px 4px 30px; max-width: 62ch; color: var(--dim); font-weight: 300;
+  }}
+  a {{ color: var(--cyan); }}
+
+  .grid {{
+    display: grid; gap: 4px;
+    grid-template-columns: repeat(auto-fill, minmax(228px, 1fr));
+  }}
   .app {{
-    background: var(--card); border: 1px solid var(--rule);
-    display: flex; flex-direction: column; overflow: hidden;
+    display: flex; flex-direction: column; align-items: center; text-align: center;
+    padding: 22px 16px 18px; gap: 4px; border-radius: 3px; height: 100%;
+    transition: background .18s ease, transform .18s ease;
   }}
-  .media {{
-    display: grid; place-items: center; padding: 16px 12px;
-    background: var(--ground); border-bottom: 1px solid var(--rule);
+  .app:hover {{ background: rgba(255,255,255,.055); transform: translateY(-2px); }}
+  .app img, .noicon {{
+    width: 144px; height: 80px; display: block; margin-bottom: 12px;
+    box-shadow: 0 10px 22px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.08);
   }}
-  .media img {{ display: block; width: 144px; height: 80px; }}
   .noicon {{
-    width: 144px; height: 80px; display: grid; place-items: center;
-    border: 1px dashed var(--rule); color: var(--dim);
-    font: 11px ui-monospace, monospace; letter-spacing: .1em;
+    display: grid; place-items: center; color: var(--dim);
+    border: 1px dashed var(--rule); box-shadow: none;
+    font: 10px ui-monospace, monospace; letter-spacing: .18em;
   }}
-  .body {{ padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 6px; flex: 1; }}
-  .name {{ font-weight: 600; font-size: 16px; }}
-  .name a {{ text-decoration: none; }}
-  .name a:hover {{ text-decoration: underline; }}
-  .by {{ color: var(--dim); font-size: 13px; }}
-  .summary {{ margin: 2px 0 8px; flex: 1; }}
+  .name {{ font-size: 16px; font-weight: 400; letter-spacing: .01em; }}
+  .name a {{ color: var(--ink); text-decoration: none; }}
+  .name a:hover {{ color: var(--cyan); }}
+  .by {{ font-size: 12px; color: var(--dim); }}
+  .summary {{
+    margin: 8px 0 14px; font-size: 13.5px; color: var(--dim); font-weight: 300;
+    flex: 1;
+  }}
   .tags {{
-    font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--dim);
-    display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
-    border-top: 1px solid var(--rule); padding-top: 10px;
+    margin-top: auto;
+    font: 11px ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .1em; color: var(--dim);
+    display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;
   }}
-  .ver {{ color: var(--accent); }}
+  .ver {{ color: var(--cyan); }}
+
   footer {{
-    margin-top: 36px; padding-top: 16px; border-top: 1px solid var(--rule);
-    color: var(--dim); font-size: 13px;
+    margin-top: 40px; padding: 14px 4px 0; border-top: 1px solid var(--rule);
+    display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    font: 11px ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--dim);
+  }}
+  .glyph {{
+    display: inline-grid; place-items: center; width: 15px; height: 15px;
+    border: 1px solid currentColor; border-radius: 50%; font-size: 9px;
+    vertical-align: -3px; margin-right: 5px;
   }}
 </style>
+<div class="wave" aria-hidden="true">
+  <svg viewBox="0 0 1200 400" preserveAspectRatio="none">
+    <path d="M0 250 C 220 120, 380 330, 620 210 S 1000 90, 1200 180"
+          fill="none" stroke="#8fd0ff" stroke-opacity=".30" stroke-width="1.5"/>
+    <path d="M0 285 C 240 165, 420 360, 660 245 S 1020 130, 1200 215"
+          fill="none" stroke="#8fd0ff" stroke-opacity=".18" stroke-width="1"/>
+    <path d="M0 320 C 260 210, 460 395, 700 280 S 1040 175, 1200 250"
+          fill="none" stroke="#8fd0ff" stroke-opacity=".10" stroke-width="1"/>
+  </svg>
+</div>
 <div class="wrap">
   <header>
-    <h1>PSPDX <span>catalog</span></h1>
-    <p class="lede">Homebrew for the PlayStation Portable, listed so that
-    <a href="https://github.com/chriopter/pspdx">PSPDX</a> on the console can
-    install it and tell you when there is a new version. Downloads come from
-    each author&#39;s own release.</p>
-    <div class="meta">
+    <h1><b>PSPDX</b> catalog</h1>
+    <div class="status">
       <span>{count} apps</span>
-      <span>last checked {generated}</span>
+      <span>checked {generated}</span>
       <span><a href="catalog.json">catalog.json</a></span>
-      <span><a href="https://github.com/chriopter/pspdx-catalog">add yours</a></span>
     </div>
   </header>
+
+  <p class="lede">Homebrew for the PlayStation Portable, listed so that
+  <a href="https://github.com/chriopter/pspdx">PSPDX</a> on the console can
+  install it and tell you when there is a new version. Every download comes
+  from the release its author published &mdash; nothing is hosted here.</p>
+
   <div class="grid">
 {cards}
   </div>
-  <footer>Nothing is hosted here. Every download links to the release its
-  author published.</footer>
+
+  <footer>
+    <span><span class="glyph">&#10005;</span>download links to the author&#39;s release</span>
+    <span><a href="https://github.com/chriopter/pspdx-catalog">add an app</a></span>
+  </footer>
 </div>
 """
 
 CARD = """    <article class="app">
-      <div class="media">{art}</div>
-      <div class="body">
-        <div class="name"><a href="{repo}">{name}</a></div>
-        <div class="by">{author}</div>
-        <p class="summary">{summary}</p>
-        <div class="tags">
-          <span class="ver">{version}</span>
-          <span>{category}</span>
-          <span>{license}</span>
-          <span><a href="{url}">download</a></span>
-        </div>
+      {art}
+      <div class="name"><a href="{repo}">{name}</a></div>
+      <div class="by">{author}</div>
+      <p class="summary">{summary}</p>
+      <div class="tags">
+        <span class="ver">{version}</span>
+        <span>{category}</span>
+        <span>{license}</span>
+        <span><a href="{url}">download</a></span>
       </div>
     </article>"""
 
