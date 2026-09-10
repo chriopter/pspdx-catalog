@@ -15,23 +15,23 @@ shaped this way: **[see the main repository](https://github.com/chriopter/pspdx)
 
 ## An app bundle
 
-One directory per app, named after its id.
+One directory per app, named after its id. Here is [a whole one](apps/io.github.chriopter.rustraytracer).
 
 | | |
 |---|---|
-| `app.json` | The entry. Half by hand, half by `scan.py`. |
+| [`app.json`](apps/io.github.chriopter.rustraytracer/app.json) | The entry. Half by hand, half by `scan.py`. |
 | `icon.png` | 144x80, out of the EBOOT. Optional. |
-| `screenshot.png` | 480x272 still. Optional. |
-| `video.mp4` | Ten seconds of H.264 baseline. Optional. |
+| [`screenshot.png`](apps/io.github.chriopter.rustraytracer/screenshot.png) | 480x272 still. Optional. |
+| [`video.mp4`](apps/io.github.chriopter.rustraytracer/video.mp4) | Ten seconds of H.264 baseline. Optional. |
 
 ## The machinery
 
 | | |
 |---|---|
-| `scan.py` | Reads the newest release, hashes it, looks inside. |
-| `build.py` | Folds every entry into one `catalog.json`. |
-| `.github/workflows/scan.yml` | Runs the scan hourly, commits, deploys. |
-| `.github/workflows/rescan.yml` | Scans one repository when an issue asks. |
-| `.github/workflows/pages.yml` | Builds the site and publishes it. |
+| [`scan.py`](scan.py) | Reads the newest release, hashes it, looks inside. |
+| [`build.py`](build.py) | Folds every entry into one `catalog.json`. |
+| [`scan.yml`](.github/workflows/scan.yml) | Runs the scan hourly, commits, deploys. |
+| [`rescan.yml`](.github/workflows/rescan.yml) | Scans one repository when an issue asks. |
+| [`pages.yml`](.github/workflows/pages.yml) | Builds the site and publishes it. |
 
 No binaries live here. Those stay in their authors' releases.
