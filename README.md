@@ -13,6 +13,17 @@ shaped this way: **[see the main repository](https://github.com/chriopter/pspdx)
 - **To have a release picked up now** rather than within the hour — open an
   issue titled `rescan: <repo url>`.
 
+## Currently listed apps
+
+| | | |
+|---|---|---|
+| **[Abandoned Test App](https://github.com/chriopter/psp-dx-testapp-abandoned)** | apps · MIT | 1 |
+| **[Extreme Tux Racer](https://github.com/chriopter/psp-tuxracer)** | games · GPL-2.0 | 0.21.0 |
+| **[PSPDX Test App](https://github.com/chriopter/psp-dx-testapp)** | apps · MIT | 2 |
+| **[Rust Raytracer](https://github.com/chriopter/psp-rust-raytracer)** | demos · MIT | 0.1.0 |
+
+Maintained by hand for now; the versions come from the last scan.
+
 ## An app bundle
 
 One directory per app, named after its id. Here is [a whole one](apps/io.github.chriopter.rustraytracer).
