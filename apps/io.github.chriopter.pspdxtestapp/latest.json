@@ -1,8 +1,8 @@
 {
-  "rev": 1789060223,
-  "version": "2",
-  "url": "https://github.com/chriopter/psp-dx-testapp/releases/download/v2/testapp-v2.zip",
-  "sha256": "e176112fd0d061728f744dc774a211f3c9d7a181c8a9c40f60f8aec18c59f4f9",
-  "size": 68987,
+  "rev": 1789070612,
+  "version": "3",
+  "url": "https://github.com/chriopter/psp-dx-testapp/releases/download/v3/testapp.zip",
+  "sha256": "f4b39fd95d06b5de9e247c793e4b7c353f291717284b002f08d22254e0319eba",
+  "size": 75824,
   "root": "PSP/GAME/PSPDXTest/"
 }

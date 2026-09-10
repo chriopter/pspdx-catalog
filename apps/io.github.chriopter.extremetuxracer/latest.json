@@ -1,7 +1,7 @@
 {
-  "rev": 1789046256,
-  "version": "0.21.0",
-  "url": "https://github.com/chriopter/psp-tuxracer/releases/download/v0.21.0/extremetuxracer-psp.zip",
+  "rev": 1789070635,
+  "version": "0.22.0",
+  "url": "https://github.com/chriopter/psp-tuxracer/releases/download/v0.22.0/etr.zip",
   "sha256": "807b7e08e3ac6e791b12025cef617a72c920c0d98fd5d38c59d70784262c5be2",
   "size": 44048464,
   "root": "PSP/GAME/ExtremeTuxRacer/"

@@ -1,8 +1,8 @@
 {
-  "rev": 1789055771,
-  "version": "1",
-  "url": "https://github.com/chriopter/psp-dx-testapp-abandoned/releases/download/v1/pspdx-testapp-abandoned.zip",
-  "sha256": "8765ce171bb5dcf99de6d16fcf33bb791b68ec71d5fe890f82fdb4c1e4b8a81f",
-  "size": 69127,
+  "rev": 1789070617,
+  "version": "2",
+  "url": "https://github.com/chriopter/psp-dx-testapp-abandoned/releases/download/v2/aband.zip",
+  "sha256": "3bc3ef721a246cfee65a684b8dd31715c897699f2bf79b20b169e5ab24ee426c",
+  "size": 77915,
   "root": "PSP/GAME/PSPDXTestAbandoned/"
 }
