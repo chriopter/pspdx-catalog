@@ -1,0 +1,32 @@
+name: Check an entry
+
+# Nothing used to look at a pull request. A missing field or a repository with
+# no release only showed up as a red deploy after the merge, by which point
+# the catalog had stopped updating for everybody.
+on:
+  pull_request:
+    paths: ["apps/**", "build.py", "scan.py"]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the catalog
+        run: python3 build.py /tmp/site/catalog.json
+
+      - name: Check every entry can actually be scanned
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          for f in apps/*/app.json; do
+            repo="$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['repo'])" "$f")"
+            echo "== $(dirname "$f" | xargs basename)  $repo"
+            python3 scan.py --check "$repo"
+          done

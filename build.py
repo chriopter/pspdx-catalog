@@ -95,7 +95,11 @@ def load(path):
 
     state = path.parent / "latest.json"
     if not state.exists():
-        sys.exit(f"{path.parent.name}: no latest.json; run scan.py")
+        # A pull request adds app.json and nothing else -- the scanner owns
+        # the other half and fills it in within the hour. Refusing to build
+        # would take the whole catalog down for one half-finished entry.
+        print(f"{path.parent.name}: not scanned yet, leaving it out")
+        return None
     latest = read_json(state)
     missing = [k for k in RELEASE if k not in latest]
     if missing:
@@ -324,7 +328,8 @@ def main(out):
         if not (d / "app.json").exists():
             sys.exit(f"{d.name}: no app.json")
 
-    apps = [load(p) for p in sorted((HERE / "apps").glob("*/app.json"))]
+    apps = [a for a in (load(p) for p in sorted((HERE / "apps").glob("*/app.json")))
+            if a is not None]
     if not apps:
         sys.exit("no apps found; refusing to write an empty catalog")
 
