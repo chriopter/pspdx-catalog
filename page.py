@@ -240,6 +240,33 @@ def app_page(a):
     mb = r["size"] / (1024 * 1024)
     size = f"{mb:.1f} MB" if mb >= 1 else f"{r['size'] / 1024:.0f} KB"
 
+    rows = [("version", f'{e(r.get("version", ""))}, published {when}'),
+            ("download", f'{size} &mdash; <a href="{e(r["url"])}">{e(r["url"].rsplit("/", 1)[-1])}</a>'),
+            ("sha256", e(r["sha256"])),
+            ("size", f'{r["size"]} bytes'),
+            ("rev", str(r["rev"])),
+            ("category", e(a["category"])),
+            ("licence", e(a["license"])),
+            ("source", f'<a href="{e(a["repo"])}">{e(a["repo"])}</a>'),
+            ("id", e(a["id"]))]
+
+    # What the scanner keeps to itself. The console is never sent any of it,
+    # but somebody looking at an entry should be able to see all of it.
+    sc = a.get("_scanner", {})
+    if "seen" in sc:
+        seen = datetime.fromtimestamp(sc["seen"], timezone.utc).strftime("%Y-%m-%d")
+        rows.append(("seen", f'{sc["seen"]} ({seen}) &mdash; the newest release '
+                             'looked at, which moves even when the bytes do not'))
+    if "root" in sc:
+        rows.append(("root", e(sc["root"] or "(the archive itself)")))
+    for k, v in a.get("_options", {}).items():
+        rows.append((k, e(str(v))))
+    for k in ("icon", "screenshot", "video"):
+        if k in a:
+            rows.append((k, f'<a href="{e(a[k])}">{e(a[k])}</a>'))
+
+    facts = "\n".join(f"    <tr><th>{k}</th><td>{v}</td></tr>" for k, v in rows)
+
     body = f'''  <div class="hero">
     {icon}
     <div>
@@ -254,13 +281,7 @@ def app_page(a):
   </div>
 
   <table class="facts">
-    <tr><th>version</th><td>{e(r.get("version", ""))}, published {when}</td></tr>
-    <tr><th>download</th><td>{size}</td></tr>
-    <tr><th>sha256</th><td>{e(r["sha256"])}</td></tr>
-    <tr><th>category</th><td>{e(a["category"])}</td></tr>
-    <tr><th>licence</th><td>{e(a["license"])}</td></tr>
-    <tr><th>source</th><td><a href="{e(a["repo"])}">{e(a["repo"])}</a></td></tr>
-    <tr><th>id</th><td>{e(a["id"])}</td></tr>
+{facts}
   </table>
 
   <a class="get" href="{e(r["url"])}">Download</a>

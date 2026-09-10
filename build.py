@@ -110,9 +110,14 @@ def load(path):
     # asset and scan steer the scanner, root and seen are how it recognises
     # the next release. None of them is any of the console's business, and the
     # asset fields belong to the builder, not to whoever wrote the entry.
-    for k in ("asset", "scan") + tuple(f for _, f in ASSETS.values()):
-        app.pop(k, None)
+    # They are kept under an underscore for the web page, which shows
+    # everything, and dropped again before catalog.json is written.
+    opts = {k: app.pop(k) for k in ("asset", "scan") if k in app}
+    for _, field in ASSETS.values():
+        app.pop(field, None)
     app["release"] = {k: latest[k] for k in SERVED if k in latest}
+    app["_scanner"] = latest
+    app["_options"] = opts
     return app
 
 
@@ -164,7 +169,8 @@ def main(out):
     catalog = {
         "schema": SCHEMA,
         "generated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "apps": apps,
+        "apps": [{k: v for k, v in a.items() if not k.startswith("_")}
+                 for a in apps],
     }
     # Compact separators: the client holds this in RAM, and the PSP has 24 MB.
     text = json.dumps(catalog, ensure_ascii=False, separators=(",", ":"))
