@@ -24,9 +24,13 @@ source licences only.
 }
 ```
 
+`category` is one of `games`, `emulators`, `apps`, `plugins`, `demos`. The
+directory has to be named exactly like the `id`.
+
 That is all you write. The version, URL and checksum land in a second file,
 `latest.json`, which the scanner owns — no workflow here ever writes
-`app.json`.
+`app.json`. A pull request that adds only `app.json` is correct: the entry
+appears in the catalog after the next scan.
 
 ## Release your app
 
@@ -46,6 +50,9 @@ you tell us nothing. Faster: open an issue titled `rescan: <repo url>`.
 
 Move the EBOOT somewhere else and the catalog stays put, with an issue, rather
 than shipping something that will not install.
+
+To freeze an entry where it is — a newer release that breaks the PSP build,
+say — put `"scan": false` in its `app.json`.
 
 ## App package format
 
