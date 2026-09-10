@@ -5,15 +5,6 @@ One file per app, served as one
 [catalog.json](https://chriopter.github.io/pspdx-catalog/catalog.json).
 Downloads come from your own GitHub release, not from here.
 
-## Listed
-
-| | | |
-|---|---|---|
-| **[Abandoned Test App](https://github.com/chriopter/psp-dx-testapp-abandoned)** | apps · MIT | 1 |
-| **[Extreme Tux Racer](https://github.com/chriopter/psp-tuxracer)** | games · GPL-2.0 | 0.21.0 |
-| **[PSPDX Test App](https://github.com/chriopter/psp-dx-testapp)** | apps · MIT | 2 |
-| **[Rust Raytracer](https://github.com/chriopter/psp-rust-raytracer)** | demos · MIT | 0.1.0 |
-
 ## Get listed
 
 A pull request adding `apps/<id>/app.json`. Or open an issue and ask. Open
