@@ -1,4 +1,4 @@
-name: Rescan on request
+name: Triggered scan
 
 # An author with no access here can still ask for their release to be picked
 # up: open an issue titled "rescan: <repository url>". Anyone may open one, so
@@ -60,4 +60,4 @@ jobs:
       contents: read
       pages: write
       id-token: write
-    uses: ./.github/workflows/pages.yml
+    uses: ./.github/workflows/build-catalog.yml

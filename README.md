@@ -30,8 +30,8 @@ One directory per app, named after its id. Here is [a whole one](apps/io.github.
 |---|---|
 | [`scan.py`](scan.py) | Reads the newest release, hashes it, looks inside. |
 | [`build.py`](build.py) | Folds every entry into one `catalog.json`. |
-| [`scan.yml`](.github/workflows/scan.yml) | Runs the scan hourly, commits, deploys. |
-| [`rescan.yml`](.github/workflows/rescan.yml) | Scans one repository when an issue asks. |
-| [`pages.yml`](.github/workflows/pages.yml) | Builds the site and publishes it. |
+| [`hourly-scan.yml`](.github/workflows/hourly-scan.yml) | Runs the scan hourly, commits, deploys. |
+| [`trigger-scan.yml`](.github/workflows/trigger-scan.yml) | Scans one repository when an issue asks. |
+| [`build-catalog.yml`](.github/workflows/build-catalog.yml) | Builds the site and publishes it. |
 
 No binaries live here. Those stay in their authors' releases.

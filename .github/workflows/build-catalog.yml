@@ -1,10 +1,10 @@
-name: Pages
+name: Build catalog
 
 on:
   push:
     branches: [master]
   workflow_dispatch:
-  # Called by scan.yml: a push it makes with GITHUB_TOKEN triggers nothing on
+  # Called by hourly-scan.yml: a push it makes with GITHUB_TOKEN starts nothing on
   # its own, so the deploy has to be asked for explicitly.
   workflow_call:
 
