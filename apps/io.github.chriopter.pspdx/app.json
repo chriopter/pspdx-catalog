@@ -1,0 +1,9 @@
+{
+  "id": "io.github.chriopter.pspdx",
+  "name": "PSPDX",
+  "author": "chriopter",
+  "summary": "The catalog you are looking at, and its own updater.",
+  "category": "apps",
+  "license": "GPL-2.0",
+  "repo": "https://github.com/chriopter/pspdx"
+}
