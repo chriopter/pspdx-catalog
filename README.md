@@ -65,7 +65,7 @@ One directory per app, named after the `id` in it —
 | [`latest.json`](apps/io.github.chriopter.rustraytracer/latest.json) | The scanner's. Version, URL, checksum. Never edited by hand. |
 | `icon.png` | 144x80, out of the EBOOT. Optional. |
 | [`screenshot.png`](apps/io.github.chriopter.rustraytracer/screenshot.png) | 480x272. Optional. |
-| [`video.mp4`](apps/io.github.chriopter.rustraytracer/video.mp4) | Ten seconds, H.264 baseline. Optional. |
+| [`video.mp4`](apps/io.github.chriopter.rustraytracer/video.mp4) | Ten seconds, 256x144, H.264 baseline, under 200 KB: `sh encode-video.sh <source> apps/<id>/video.mp4`. Optional. |
 
 ## Files
 
@@ -73,8 +73,6 @@ One directory per app, named after the `id` in it —
 |---|---|
 | [`scan.py`](scan.py) | Finds new releases, downloads, checks. |
 | [`build.py`](build.py) | Builds `catalog.json`. |
+| [`encode-video.sh`](encode-video.sh) | The one way a preview clip is made: half the screen, no sound, quality stepped down until it is under 200 KB, which a PSP on 802.11b fetches in about a second. |
 | [`.github/workflows/`](.github/workflows) | Hourly, on request, and publishing. |
 
-## TODO
-
-- Video size decision
