@@ -74,3 +74,7 @@ One directory per app, named after the `id` in it —
 | [`scan.py`](scan.py) | Finds new releases, downloads, checks. |
 | [`build.py`](build.py) | Builds `catalog.json`. |
 | [`.github/workflows/`](.github/workflows) | Hourly, on request, and publishing. |
+
+## TODO
+
+- Video size decision
