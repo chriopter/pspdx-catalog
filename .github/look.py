@@ -188,7 +188,16 @@ def api(path, what):
 def fetch(url, cap, what):
     """Bytes, never more than cap of them: one read of cap + 1 is enough to
     know the thing is too big without pulling all of it into memory."""
-    request = urllib.request.Request(url, headers={"User-Agent": "pspdx-catalog"})
+    # raw.githubusercontent.com is a cache in front of the repository, and it
+    # holds a file for minutes after it changed: a run that reads a .pspdx a
+    # moment after its author fixed it would read the broken one and leave the
+    # app out for an hour. Asking it not to serve the copy costs nothing and
+    # makes a run see what the repository says now.
+    request = urllib.request.Request(url, headers={
+        "User-Agent": "pspdx-catalog",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+    })
     try:
         with urllib.request.urlopen(request, timeout=300) as answer:
             data = answer.read(cap + 1)
