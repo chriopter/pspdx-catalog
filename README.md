@@ -24,20 +24,21 @@ Built every time, committed never.
 
 ## How a run works
 
-```mermaid
-flowchart TD
-  L["repos.txt<br/>one GitHub URL a line"] --> W["deploy.yml<br/>hourly, on push, on request"]
-  W --> R["look.py, for each repo"]
-  R --> P[".pspdx<br/>checked against the format"]
-  R --> G["GitHub API<br/>release, date, description"]
-  R --> Z["the zip<br/>hashed, EBOOT read"]
-  Z --> E["the EBOOT<br/>icon, picture, film, sound"]
-  P --> S["site/<br/>catalog.json, the media, state.json"]
-  G --> S
-  E --> S
-  S --> Y["page.py<br/>index.html, a page an app"]
-  S --> Q{"state.json against<br/>the published one"}
-  Q -- same --> N["publish nothing"]
-  Q -- different --> D["deploy to Pages"]
-  D --> C["the PSP fetches catalog.json"]
+```
+  repos.txt
+      |
+      |  deploy.yml, hourly
+      v
+  look.py  ---> .pspdx      the app says what it is
+      |    ---> GitHub API  the release says which version
+      |    ---> the zip     hashed, and the EBOOT taken out of it
+      |
+      v
+  catalog.json + icons, shots, vids, snd + index.html
+      |
+      |  same as what is published?
+      |
+      +-- yes --> stop
+      |
+      +-- no  --> deploy to Pages --> the PSP reads catalog.json
 ```
