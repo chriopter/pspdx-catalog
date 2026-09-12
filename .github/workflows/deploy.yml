@@ -1,7 +1,7 @@
-# Every hour: ask each repository on the list what its latest release is,
-# and publish the answer. What is already published is the only memory
-# this repository keeps, so the run compares the two and stops when they
-# are the same, which is most hours.
+# Every hour: read every repository on the list, its .pspdx, its release and
+# the EBOOT in it, and publish the catalog, the pictures and the page. What
+# is already published is the only memory this repository keeps, so the run
+# compares the two and stops when they are the same, which is most hours.
 name: Deploy
 
 on:
@@ -30,7 +30,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Look at the repositories on the list
+      - name: Read the repositories on the list
         id: look
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -46,3 +46,12 @@ jobs:
       - uses: actions/deploy-pages@v4
         id: deployment
         if: steps.look.outputs.changed == 'yes'
+
+      # Last, so that a repository nobody can list still leaves the rest of
+      # the catalog on the site: the run goes red, the page stays current,
+      # and the reason is in the log and at the bottom of the page.
+      - name: Fail if anything was left out
+        if: steps.look.outputs.left_out != '0'
+        run: |
+          echo "${{ steps.look.outputs.left_out }} repositories were left out; see the log above"
+          exit 1
