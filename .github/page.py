@@ -154,7 +154,7 @@ SHELL = """<!doctype html>
   <footer>
     <span>Downloads from the authors’ GitHub releases</span>
     <span><a href="https://github.com/chriopter/pspdx-catalog">catalog</a>
-      &middot; <a href="https://github.com/chriopter/pspdx">client</a>
+      &middot; <a href="https://github.com/chriopter/pspdx-app">client</a>
       &middot; <a href="https://github.com/chriopter/pspdx-catalog/issues">issues</a></span>
   </footer>
 </div>
