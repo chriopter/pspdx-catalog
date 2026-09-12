@@ -520,8 +520,11 @@ def write_site(apps, broken, state, out):
     with open(os.path.join(out, "state.json"), "w", encoding="utf-8") as file:
         json.dump(state, file, indent=2)
         file.write("\n")
-    with open(os.path.join(out, "index.html"), "w", encoding="utf-8") as file:
-        file.write(page.render(catalog, apps, broken))
+    # The site is more than one file now: the tiles, a page an app, and the
+    # style and the wave they share, so the pages write themselves. It comes
+    # after the pictures because a page measures the film and the sound where
+    # they have just been written.
+    page.render(catalog, apps, broken, out)
 
     have = ", ".join(f"{sum(field in app for app in apps)} {field}s"
                      for field in MEDIA)
