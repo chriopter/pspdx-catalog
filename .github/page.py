@@ -74,7 +74,6 @@ a { color: var(--cyan); }
 .app-main { display: block; flex: 1; color: inherit; text-decoration: none; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
 .app .actions { gap: 6px; }
-.app .get { flex: 1 0 auto; padding: 8px 4px; font-size: 10px; letter-spacing: 0; text-align: center; white-space: nowrap; }
 a:focus-visible { outline: 2px solid var(--cyan); outline-offset: 4px; }
 .app:hover {
   background: rgba(255,255,255,.09); border-color: rgba(127,212,255,.45);
@@ -125,11 +124,12 @@ a:focus-visible { outline: 2px solid var(--cyan); outline-offset: 4px; }
 .facts .note { color: var(--dim); }
 .facts .gone { color: var(--dim); }
 .get {
-  display: inline-block; padding: 11px 22px;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px;
   border: 1px solid rgba(127,212,255,.5); border-radius: 3px;
   color: var(--cyan); text-decoration: none;
-  font: 12px ui-monospace, monospace; letter-spacing: .16em; text-transform: uppercase;
 }
+.get svg { width: 18px; height: 18px; }
 .get:hover { background: rgba(127,212,255,.12); }
 
 /* --- the files a browser cannot open, and the apps that are not here ---
@@ -346,11 +346,29 @@ def bar(base, *bits):
 
 def actions(app):
     e = html.escape
+    github = ('<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">'
+              '<path d="M12 .75a11.25 11.25 0 0 0-3.558 21.923c.563.104.769-.244.769-.542'
+              ' 0-.267-.01-.975-.015-1.913-3.13.68-3.791-1.509-3.791-1.509'
+              '-.512-1.3-1.25-1.646-1.25-1.646-1.022-.699.078-.685.078-.685'
+              ' 1.13.08 1.725 1.16 1.725 1.16 1.005 1.724 2.637 1.226 3.28.937'
+              '.102-.728.393-1.226.715-1.508-2.499-.284-5.126-1.25-5.126-5.562'
+              ' 0-1.229.44-2.233 1.16-3.02-.116-.284-.503-1.429.11-2.978'
+              ' 0 0 .945-.303 3.094 1.154A10.79 10.79 0 0 1 12 6.183'
+              'c.956.004 1.919.129 2.818.378 2.148-1.457 3.091-1.154 3.091-1.154'
+              '.615 1.549.228 2.694.112 2.978.722.787 1.158 1.791 1.158 3.02'
+              ' 0 4.323-2.631 5.275-5.138 5.554.404.348.766 1.034.766 2.084'
+              ' 0 1.505-.014 2.719-.014 3.088 0 .301.203.652.774.541'
+              'A11.252 11.252 0 0 0 12 .75Z"/></svg>')
+    download = ('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+                'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" '
+                'aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></svg>')
     return (f'<div class="actions">'
             f'<a class="get" href="{e(app["repo"])}" target="_blank" '
-            f'rel="noopener noreferrer" aria-label="{e(app["name"])} on GitHub (new tab)">GitHub ↗</a>'
+            f'rel="noopener noreferrer" title="GitHub (new tab)" '
+            f'aria-label="{e(app["name"])} on GitHub (new tab)">{github}</a>'
             f'<a class="get" href="{e(app["release"]["url"])}" target="_blank" '
-            f'rel="noopener noreferrer" aria-label="Download {e(app["name"])} (new tab)">Download ↗</a>'
+            f'rel="noopener noreferrer" title="Download (new tab)" '
+            f'aria-label="Download {e(app["name"])} (new tab)">{download}</a>'
             '</div>')
 
 
