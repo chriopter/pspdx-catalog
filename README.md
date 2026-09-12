@@ -1,18 +1,9 @@
 # PSPDX catalog
 
 The list of PSP homebrew [PSPDX](https://github.com/chriopter/pspdx) shows
-on the console.
+on the console. View it here: https://chriopter.github.io/pspdx-catalog/
 
-View it here: https://chriopter.github.io/pspdx-catalog/
-
-## What makes an app appear here
-
-- A `.pspdx` in its root
-- Being listed here in [`repos.txt`](repos.txt)
-
-An hourly job scans all listed repos for changes and rebuilds the catalog.
-
-See [pspdx-demo](https://github.com/chriopter/pspdx-demo) for an example entry.
+To list an app, add .pspdx and open an issue for . See the example repo [pspdx-demo](https://github.com/chriopter/pspdx-demo) for an example entry.
 
 ## Every file here
 
