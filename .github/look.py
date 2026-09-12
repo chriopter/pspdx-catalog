@@ -78,7 +78,7 @@ GITHUB = re.compile(r"https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?
 # what this one app is, and the install directory is matched whole, because
 # the schema's `$` is the end of the string and Python's is not quite.
 CATEGORIES = ("game", "emulator", "app", "plugin", "demo")
-INSTALLDIR = re.compile(r"PSP/GAME/[A-Za-z0-9_.-]{1,32}")
+INSTALLDIR = re.compile(r"PSP/GAME/(?!\.{1,2}$)[A-Za-z0-9_.-]{1,32}")
 
 # The file's keys, which of them must be there, and the longest each string
 # may be. The caps are the schema's: a name fits the XMB, a summary fits one
@@ -283,7 +283,7 @@ def validate(data):
     if not isinstance(data["installdir"], str) \
             or not INSTALLDIR.fullmatch(data["installdir"]):
         raise Problem('.pspdx: "installdir" is PSP/GAME/ and 1 to 32 of '
-                      "[A-Za-z0-9_.-], and nothing else in version 1")
+                      "[A-Za-z0-9_.-], excluding . and .., in version 1")
     return data
 
 
@@ -322,7 +322,7 @@ def eboot(archive):
     # inside a directory looks like a name at the root.
     members = [(name.replace("\\", "/"), name) for name in archive.namelist()]
     found = [(path, name) for path, name in members
-             if path.lower().endswith("eboot.pbp")]
+             if path.rsplit("/", 1)[-1].lower() == "eboot.pbp"]
     if not found:
         raise Problem("no EBOOT.PBP in the zip")
     if len(found) > 1:

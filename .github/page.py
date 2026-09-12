@@ -423,7 +423,8 @@ def pixels(path):
     try:
         with open(path, "rb") as file:
             head = file.read(24)
-        if head[:8] == b"\x89PNG\r\n\x1a\n" and head[12:16] == b"IHDR":
+        if (len(head) == 24 and head[:8] == b"\x89PNG\r\n\x1a\n"
+                and head[12:16] == b"IHDR"):
             wide, high = struct.unpack(">II", head[16:24])
             return f"{wide}x{high}"
     except OSError:

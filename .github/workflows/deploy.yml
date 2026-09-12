@@ -30,6 +30,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Test catalog processing
+        run: python3 -m unittest discover -s .github -p 'test_*.py' -v
+
       - name: Read the repositories on the list
         id: look
         env:
