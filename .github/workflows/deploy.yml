@@ -1,0 +1,48 @@
+# Every hour: ask each repository on the list what its latest release is,
+# and publish the answer. What is already published is the only memory
+# this repository keeps, so the run compares the two and stops when they
+# are the same, which is most hours.
+name: Deploy
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time, and never two racing.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Look at the repositories on the list
+        id: look
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          LIVE: https://chriopter.github.io/pspdx-catalog/state.json
+        run: python3 .github/look.py
+
+      - uses: actions/configure-pages@v5
+        if: steps.look.outputs.changed == 'yes'
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.look.outputs.changed == 'yes'
+        with:
+          path: site
+      - uses: actions/deploy-pages@v4
+        id: deployment
+        if: steps.look.outputs.changed == 'yes'
