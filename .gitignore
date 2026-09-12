@@ -1,2 +1,11 @@
-site/
+# Generated catalog and media
+/site/
+
+# Python caches
 __pycache__/
+*.py[cod]
+
+# Editor and OS files
+*.swp
+*.swo
+.DS_Store
