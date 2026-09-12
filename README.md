@@ -5,7 +5,7 @@ on the console. View it here: https://chriopter.github.io/pspdx-catalog/
 
 To list an app: a root `.pspdx`, a release with exactly one ZIP containing
 exactly one `EBOOT.PBP`, and an issue here. No drafts or prereleases.
-The `.pspdx` must include `repo`, the project's GitHub URL.
+The `.pspdx` must include `source`, the project's source URL (a GitHub repository in v1).
 See [pspdx-demo](https://github.com/chriopter/pspdx-demo) for an example.
 
 ## Workflow

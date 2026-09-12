@@ -11,28 +11,28 @@ import page
 
 
 class CatalogRegressionTests(unittest.TestCase):
-    def test_repo_is_required_and_must_be_a_github_url(self):
+    def test_source_is_required_and_must_be_a_github_url(self):
         spec = {"schema": look.PSPDX_SCHEMA, "name": "Example",
                 "category": "demo", "installdir": "PSP/GAME/Example"}
-        with self.assertRaisesRegex(look.Problem, "repo"):
+        with self.assertRaisesRegex(look.Problem, "source"):
             look.validate(spec)
         for repo in (None, 12, "", "example/demo", "http://github.com/example/demo",
                      "https://example.com/demo", "https://github.com/example/demo\n",
                      "https://github.com/example/demo/issues"):
-            with self.subTest(repo=repo), self.assertRaisesRegex(look.Problem, "repo"):
-                look.validate(dict(spec, repo=repo))
-        look.validate(dict(spec, repo="https://github.com/example/demo"))
+            with self.subTest(repo=repo), self.assertRaisesRegex(look.Problem, "source"):
+                look.validate(dict(spec, source=repo))
+        look.validate(dict(spec, source="https://github.com/example/demo"))
 
     def test_spdx_license_with_or_later_suffix(self):
         spec = {"schema": look.PSPDX_SCHEMA, "name": "Example",
-                "repo": "https://github.com/example/demo",
+                "source": "https://github.com/example/demo",
                 "category": "game", "installdir": "PSP/GAME/Example",
                 "license": "GPL-2.0-or-later"}
         self.assertEqual(look.validate(spec)["license"], "GPL-2.0-or-later")
 
     def test_site_build_survives_truncated_png(self):
         spec = {"schema": look.PSPDX_SCHEMA, "name": "Example",
-                "repo": "https://github.com/example/demo",
+                "source": "https://github.com/example/demo",
                 "category": "demo", "installdir": "PSP/GAME/Example"}
         media, _ = look.pictures({
             "ICON0.PNG": b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"})
@@ -79,7 +79,7 @@ class CatalogRegressionTests(unittest.TestCase):
 
     def test_install_directory_excludes_dot_components(self):
         spec = {"schema": look.PSPDX_SCHEMA, "name": "Example",
-                "repo": "https://github.com/example/demo",
+                "source": "https://github.com/example/demo",
                 "category": "demo"}
         for folder in (".", "..", "../Other", "Example\n"):
             with self.subTest(folder=folder), self.assertRaises(look.Problem):
