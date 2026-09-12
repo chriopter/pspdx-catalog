@@ -6,6 +6,15 @@ on the console. View it here: https://chriopter.github.io/pspdx-catalog/
 To list an app, add a `.pspdx` to its repository and open an issue here.
 See [pspdx-demo](https://github.com/chriopter/pspdx-demo) for an example.
 
+Once an hour:
+
+1. Every repository on the list is asked what it says about itself and which
+   release it has published.
+2. The zip on that release is downloaded and hashed, and the icon, the
+   picture, the film and the sound are taken out of the EBOOT inside it.
+3. If any of that differs from what is already published, the catalog and
+   this site are built again and deployed.
+
 ## Every file here
 
 - [`repos.txt`](repos.txt) is the list. One repo a line, `@tag` to freeze one at a release.
@@ -21,24 +30,3 @@ Built every time, committed never.
 - `index.html` and one page an app, for whoever has no PSP.
 - `icons/ shots/ vids/ snd/` hold the media out of each EBOOT.
 - `state.json` is what the last run saw, so the next one can tell.
-
-## How a run works
-
-```
-  repos.txt
-      |
-      |  deploy.yml, hourly
-      v
-  look.py  ---> .pspdx      the app says what it is
-      |    ---> GitHub API  the release says which version
-      |    ---> the zip     hashed, and the EBOOT taken out of it
-      |
-      v
-  catalog.json + icons, shots, vids, snd + index.html
-      |
-      |  same as what is published?
-      |
-      +-- yes --> stop
-      |
-      +-- no  --> deploy to Pages --> the PSP reads catalog.json
-```
