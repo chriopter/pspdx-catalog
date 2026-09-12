@@ -7,6 +7,8 @@ To list an app: a root `.pspdx`, a release with exactly one ZIP containing
 exactly one `EBOOT.PBP`, and an issue here. No drafts or prereleases.
 See [pspdx-demo](https://github.com/chriopter/pspdx-demo) for an example.
 
+## Workflow
+
 Once an hour:
 
 1. Ask each repository for its release. Same version and publishing date:
