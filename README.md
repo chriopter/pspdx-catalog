@@ -24,27 +24,20 @@ Built every time, committed never.
 
 ## How a run works
 
-```
-repos.txt                    one GitHub URL a line
-    |
-    v
-deploy.yml                   hourly, on push, on request
-    |
-    v
-look.py                      for each repo:
-    |                          .pspdx        checked against the format
-    |                          GitHub API    release, date, description
-    |                          the zip       hashed, EBOOT read
-    |                          the EBOOT     icon, picture, film, sound
-    v
-site/    catalog.json   icons/ shots/ vids/ snd/   state.json
-    |                                |
-    |                                +-- page.py --> index.html, a page an app
-    v
-state.json vs the published one
-    |                    |
-  same                different
-    |                    |
-    v                    v
- nothing           deploy to Pages --> the PSP fetches catalog.json
+```mermaid
+flowchart TD
+  L["repos.txt<br/>one GitHub URL a line"] --> W["deploy.yml<br/>hourly, on push, on request"]
+  W --> R["look.py, for each repo"]
+  R --> P[".pspdx<br/>checked against the format"]
+  R --> G["GitHub API<br/>release, date, description"]
+  R --> Z["the zip<br/>hashed, EBOOT read"]
+  Z --> E["the EBOOT<br/>icon, picture, film, sound"]
+  P --> S["site/<br/>catalog.json, the media, state.json"]
+  G --> S
+  E --> S
+  S --> Y["page.py<br/>index.html, a page an app"]
+  S --> Q{"state.json against<br/>the published one"}
+  Q -- same --> N["publish nothing"]
+  Q -- different --> D["deploy to Pages"]
+  D --> C["the PSP fetches catalog.json"]
 ```
