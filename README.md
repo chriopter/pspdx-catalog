@@ -1,28 +1,58 @@
 # PSPDX catalog
 
+The list of PSP homebrew [PSPDX](https://github.com/chriopter/pspdx) shows
+on the console, and the hourly job that turns it into a catalog:
+
 https://chriopter.github.io/pspdx-catalog/
 
-The list of PSP homebrew [PSPDX](https://github.com/chriopter/pspdx) shows
-on the console, and the hourly job that turns it into a catalog. Adding an
-app is a line in `repos.txt`; everything about the app itself is in the
-`.pspdx` in its own repository.
+## What makes an app appear here
+
+Two things, both in the app's own repository:
+
+- A `.pspdx` in its root
+- A release with an EBOOT that carries the XMB media
+
+Then one line in [`repos.txt`](repos.txt). Nothing about the app is written
+here; [pspdx-demo](https://github.com/chriopter/pspdx-demo) is the whole of
+it in a hello world.
+
+```
+https://github.com/chriopter/pspdx-demo        # a repository a line
+https://github.com/someone/psp-thing@v1.2      # @tag freezes it at one release
+```
+
+## What runs, and when
+
+Every hour, on a push and on request,
+[`deploy.yml`](.github/workflows/deploy.yml) runs
+[`look.py`](.github/look.py), which for every repository on the list reads
+the `.pspdx`, asks GitHub for the repository and its latest release,
+downloads the one zip, hashes it, finds the one `EBOOT.PBP` and takes the
+icon, the picture, the film and the sound out of it. Out of that comes
+`catalog.json`, the pictures beside it, and the page,
+[`page.py`](.github/page.py).
+
+It deploys only when something moved: `state.json` on the site is what the
+last run saw, and a run that finds the same releases, the same list and the
+same code publishes nothing. An app that cannot be listed is left out with
+the reason, at the bottom of the page and in the log, and the run goes red
+afterwards, so a failure is visible without keeping the others off the site.
 
 ## Every file here
 
 | | |
 |---|---|
-| [`repos.txt`](repos.txt) | The list. One GitHub repository a line, `@tag` after the URL to pin a release. The only file a person edits. |
-| [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) | Runs `look.py` every hour, on a push and on request, and deploys the site to GitHub Pages when it says something moved. Goes red afterwards if an app was left out. |
-| [`.github/look.py`](.github/look.py) | The job itself. Reads each repository's `.pspdx` and checks it against the format, asks GitHub for the repository and its latest release, downloads the one zip, hashes it, finds the one `EBOOT.PBP`, reads its `PARAM.SFO`, and takes the icon, the picture, the film and the sound out of the PBP. Writes `catalog.json`, the media, `state.json` and the page. |
-| [`.github/page.py`](.github/page.py) | The page: one card an app, and the apps that were left out with their reason. Style inside it, nothing fetched from anywhere. |
+| [`repos.txt`](repos.txt) | The list. The only file a person edits. |
+| [`.github/look.py`](.github/look.py) | Reads the repositories and writes the site. |
+| [`.github/page.py`](.github/page.py) | The page: a card an app, and what was left out. |
+| [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) | Runs it hourly and deploys to GitHub Pages. |
 | [`.gitignore`](.gitignore) | `site/` and `__pycache__/`, both built, neither committed. |
-| `README.md` | This. |
 
-## What the job publishes
+And on the site, none of it committed here:
 
 | | |
 |---|---|
-| `catalog.json` | What the console fetches: every app with its name, author, summary, category, licence, install directory, and the release with its version, date, URL, size and sha256. |
-| `icons/`, `shots/`, `vids/`, `snd/` | The four things out of each EBOOT, under names that carry their own bytes, so a changed picture arrives under a new name. |
-| `state.json` | What the last run saw: each repository's latest release, plus the hash of the list and of the code. The next run compares against it and publishes nothing when it matches, which is most hours. It is the only memory this repository keeps, and it lives on the site rather than here. |
+| `catalog.json` | What the console fetches: every app, and its release with version, date, URL, size and sha256. |
+| `icons/ shots/ vids/ snd/` | The four things out of each EBOOT, under names that carry their own bytes. |
+| `state.json` | What the last run saw. The only memory this repository keeps, and it lives on the site. |
 | `index.html` | The page. |
