@@ -40,6 +40,7 @@ Generated when publishing, never committed.
 
 - `catalog.json` is every app with its release, so the PSP asks once, and
   it is the memory: what is published is what the next run compares against.
+  Format: [catalog v1 schema](https://github.com/chriopter/pspdx/blob/master/schema/catalog-v1.json).
 - `catalog.html` prints that file for a person to read.
 - `index.html` is the tiles, for whoever has no PSP.
 - `apps/<id>/` is one app: its page, the available valid media from its
