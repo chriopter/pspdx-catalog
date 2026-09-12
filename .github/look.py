@@ -66,11 +66,11 @@ WORKERS = 8
 
 # The catalog names itself: a file found on a stick years from now says where
 # it came from and which version of the format it is.
-SCHEMA = "https://github.com/chriopter/pspdx-schema/blob/master/manifest.md"
+SCHEMA = "https://github.com/chriopter/pspdx/blob/master/manifest.md"
 
 # What a .pspdx must say in its `schema` line to be a version 1 file. A
 # version 2 gets a new name, so an old file is never wrong, only old.
-PSPDX_SCHEMA = "https://github.com/chriopter/pspdx-schema/blob/master/schema/v1.pspdx"
+PSPDX_SCHEMA = "https://github.com/chriopter/pspdx/blob/master/v1.pspdx"
 
 GITHUB = re.compile(r"https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?/?$")
 
