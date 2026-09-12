@@ -38,9 +38,10 @@ h1 a { color: inherit; text-decoration: none; }
 .status a { text-decoration: none; }
 .lede { color: var(--dim); margin: 24px 0; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 24px; padding: 28px 0; }
-.app { display: flex; flex-direction: column; max-width: 220px; }
+.app { display: flex; flex-direction: column; max-width: 220px; padding: 16px;
+  border: 1px solid var(--rule); border-radius: 5px; background: #ffffff03; }
 .app-main { flex: 1; color: inherit; text-decoration: none; }
-.app img, .noicon { display: block; width: 100%; aspect-ratio: 144 / 80; object-fit: contain; background: #080e17; }
+.app img, .noicon { display: block; width: 100%; height: auto; aspect-ratio: 144 / 80; object-fit: contain; background: #080e17; }
 .noicon { display: grid; place-items: center; color: var(--dim); }
 .name { margin-top: 12px; font-weight: 550; }
 .by { color: var(--dim); font-size: 12px; }
@@ -63,6 +64,8 @@ h1 a { color: inherit; text-decoration: none; }
 .shots img { display: block; width: 100%; height: auto; }
 .aside { border-top: 1px solid var(--rule); padding: 16px 0; }
 .detail-columns .aside { border-top: 0; padding: 0; }
+.release .actions { margin-top: 20px; }
+.technical > .aside:first-of-type { border-top: 0; }
 .aside h3, .aside summary { margin: 0 0 12px; font-size: 13px; font-weight: 600; }
 .aside summary { cursor: pointer; margin: 0; }
 .aside[open] summary { margin-bottom: 16px; }
@@ -82,7 +85,6 @@ pre.json .n { color: #c7bca7; }
 pre.json .p { color: var(--dim); }
 pre.json a { color: inherit; }
 footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--rule); color: var(--dim); font-size: 11px; }
-.glyph { margin-right: 6px; }
 @media (max-width: 720px) {
   body { padding: 0 18px 28px; }
   header { gap: 12px; padding: 18px 0; }
@@ -150,7 +152,7 @@ SHELL = """<!doctype html>
   </header>
 {body}
   <footer>
-    <span><span class="glyph">&#10005;</span>author&#39;s release</span>
+    <span>Downloads from the authors’ GitHub releases</span>
     <span><a href="https://github.com/chriopter/pspdx-catalog">catalog</a>
       &middot; <a href="https://github.com/chriopter/pspdx">client</a>
       &middot; <a href="https://github.com/chriopter/pspdx-catalog/issues">issues</a></span>
@@ -439,7 +441,7 @@ def origins(app, out):
 
     said.insert(0, ("id", e(app["id"])))
     return (section(f'Manifest <a href="read.pspdx">as read</a>'
-                    f'<a href="{e(app["_pspdx"])}">source</a>', said, folded=True),
+                    f'<a href="{e(app["_pspdx"])}">source</a>', said),
             section("Release", published),
             section("EBOOT media", carried))
 
@@ -448,10 +450,10 @@ def entry_block(app):
     """The app as the console is handed it, under everything that says where
     each line of it came from."""
     return f"""
-  <details class="aside">
-    <summary>Catalog JSON</summary>
+  <section class="aside">
+    <h3>Catalog JSON</h3>
     <pre class="json">{shine(plain(app))}</pre>
-  </details>
+  </section>
 """
 
 
@@ -474,6 +476,14 @@ def app_page(app, out):
                  f'alt="{e(app["name"])} running" loading="lazy">\n  </div>\n')
 
     manifest, published, media = origins(app, out)
+    day = datetime.fromtimestamp(release["rev"], timezone.utc).strftime("%d %b %Y")
+    latest = section("Latest release", [
+        ("Version", f'<a href="{e(app["_page"])}" target="_blank" '
+                    f'rel="noopener noreferrer">{e(release["version"])}</a>'),
+        ("Updated", day),
+        ("Download", size(release["size"])),
+        ("Installs to", e(app["installdir"])),
+    ])
     body = f"""  <main class="detail">
   <div class="hero">
     {icon}
@@ -482,17 +492,20 @@ def app_page(app, out):
       <div class="who">{about}</div>
       <p>{e(app["summary"])}</p>
     </div>
-    {actions(app)}
   </div>
   <div class="detail-columns">
-    <div class="preview">{shots}{media}</div>
-    <div class="release">{published}</div>
+    <div class="preview">{shots}</div>
+    <div class="release">{latest}{actions(app)}</div>
   </div>
+  <details class="aside technical">
+    <summary>Technical details</summary>
+{published}
+{media}
 {manifest}
-{entry_block(app)}"""
+{entry_block(app)}
+  </details>"""
     body += "</main>"
     return SHELL.format(
         title=f'{e(app["name"])} - PSPDX catalog', base=UP,
-        status=bar(UP, e(release["version"]),
-                   f'<a href="{UP}">all apps</a>'),
+        status=bar(UP, f'<a href="{UP}">all apps</a>'),
         body=body)
