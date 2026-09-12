@@ -15,6 +15,7 @@ apart from look.py because a page template is not catalog logic, and because
 it is most of the lines.
 """
 import html
+import json
 import os
 from datetime import datetime, timezone
 
@@ -135,6 +136,27 @@ a { color: var(--cyan); }
   letter-spacing: .04em; word-break: break-word; color: var(--dim);
 }
 .aside .why { color: #e0a2a2; }
+/* The table inside a section keeps the section's own gutter and adds none. */
+.aside .facts { margin: 0; }
+.aside p.then { margin: 18px 0 10px; }
+.aside .facts .note { color: var(--dim); }
+.aside .facts td { padding-bottom: 11px; }
+.gone { color: var(--dim); }
+
+/* catalog.json as it is, coloured by walking it: keys in the accent, strings
+   in sand, numbers in the same rose the reasons are written in. */
+pre.json {
+  margin: 0; padding: 14px 16px; overflow-x: auto;
+  border: 1px solid var(--rule); border-radius: 4px;
+  background: rgba(0,0,0,.32);
+  font: 12px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--ink);
+}
+pre.json .k { color: var(--cyan); }
+pre.json .s { color: #e6cf9c; }
+pre.json .n { color: #e0a2a2; }
+pre.json .p { color: var(--dim); }
+pre.json a { color: inherit; }
 
 footer {
   margin-top: 40px; padding: 14px 4px 0; border-top: 1px solid var(--rule);
@@ -215,7 +237,9 @@ SHELL = """<!doctype html>
 {body}
   <footer>
     <span><span class="glyph">&#10005;</span>every download comes from its author&#39;s release</span>
-    <span><a href="https://github.com/chriopter/pspdx-catalog">add an app</a></span>
+    <span><a href="https://github.com/chriopter/pspdx-catalog">this catalog</a>
+      &middot; <a href="https://github.com/chriopter/pspdx">pspdx, the client</a>
+      &middot; <a href="https://github.com/chriopter/pspdx-catalog/issues">add an app</a></span>
   </footer>
 </div>
 <script src="wave.js"></script>
@@ -228,16 +252,65 @@ TILE = """    <a class="app" href="{id}.html">
     </a>"""
 
 
+# The two ways to read the catalog, in the status bar of every page: the
+# page for a person, the file for whoever wants what the console gets. The
+# readable one comes first because most readers want that one.
+CATALOG = ('<span>catalog: <a href="catalog.html">page</a> &middot; '
+           '<a href="catalog.json">raw</a></span>')
+
+
 def size(count):
     """Bytes as a person reads them, which is what a download link is for."""
     mb = count / (1024 * 1024)
     return f"{mb:.1f} MB" if mb >= 1 else f"{count / 1024:.0f} KB"
 
 
+def shine(value, depth=0):
+    """One JSON value as coloured HTML, by walking what was parsed rather
+    than by matching patterns in the printed text: a brace inside a summary
+    is then a character in a string and can never be mistaken for syntax.
+    Whatever looks like a URL is made clickable, because every URL in this
+    file is one the console would fetch."""
+    e = html.escape
+    pad, close = "  " * (depth + 1), "  " * depth
+    if isinstance(value, dict) or isinstance(value, list):
+        open_, shut = ("{", "}") if isinstance(value, dict) else ("[", "]")
+        if not value:
+            return f'<span class="p">{open_}{shut}</span>'
+        lines = []
+        for item in (value.items() if isinstance(value, dict) else value):
+            if isinstance(value, dict):
+                key, item = item
+                lines.append(f'{pad}<span class="k">"{e(key)}"</span>'
+                             f'<span class="p">: </span>'
+                             + shine(item, depth + 1))
+            else:
+                lines.append(pad + shine(item, depth + 1))
+        body = '<span class="p">,</span>\n'.join(lines)
+        return (f'<span class="p">{open_}</span>\n{body}\n'
+                f'{close}<span class="p">{shut}</span>')
+    if isinstance(value, str):
+        # json.dumps writes the quotes and the escapes a JSON string needs;
+        # html.escape then makes the result safe to put in a page.
+        text = e(json.dumps(value, ensure_ascii=False))
+        if value.startswith("https://") or value.startswith("http://"):
+            return f'<span class="s"><a href="{e(value)}">{text}</a></span>'
+        return f'<span class="s">{text}</span>'
+    if value is None or isinstance(value, bool):
+        return f'<span class="n">{json.dumps(value)}</span>'
+    return f'<span class="n">{e(json.dumps(value))}</span>'
+
+
+def plain(app):
+    """The entry as the console reads it: everything the catalog carries,
+    minus the notes this file keeps for itself."""
+    return {key: value for key, value in app.items() if not key.startswith("_")}
+
+
 def render(catalog, apps, broken, out):
-    """The whole site: the tiles, a page an app, and the two files they
-    share. Called once, after look.py has written the pictures, so that the
-    film and the sound can be measured where they now sit."""
+    """The whole site: the tiles, a page an app, the catalog as a page, and
+    the two files they all share. Called once, after look.py has written the
+    pictures, so that every file can be measured where it now sits."""
     e = html.escape
     with open(os.path.join(out, "style.css"), "w", encoding="utf-8") as file:
         file.write(STYLE)
@@ -269,8 +342,29 @@ def render(catalog, apps, broken, out):
         file.write(SHELL.format(
             title="PSPDX catalog",
             status=f"<span>{count}</span><span>read {e(when)}</span>"
-                   f'<span><a href="catalog.json">catalog.json</a></span>',
+                   + CATALOG,
             body=body))
+    with open(os.path.join(out, "catalog.html"), "w", encoding="utf-8") as file:
+        file.write(catalog_page(catalog, count, when))
+
+
+def catalog_page(catalog, count, when):
+    """The file itself, printed so a person can read it. Nothing here is a
+    second source of truth: it is the same object the console is handed,
+    walked once more for colour."""
+    e = html.escape
+    body = f"""  <p class="lede">This is exactly the file PSPDX fetches on the
+  console, and the only thing on this site it reads:
+  <a href="catalog.json">catalog.json</a>, printed with its lines apart and
+  its URLs made clickable. Every page here is written out of it.</p>
+
+  <pre class="json">{shine(catalog)}</pre>
+"""
+    return SHELL.format(
+        title="catalog.json - PSPDX catalog",
+        status=f"<span>{count}</span><span>read {e(when)}</span>" + CATALOG
+               + '<span><a href="./">all apps</a></span>',
+        body=body)
 
 
 def left_out(broken):
@@ -299,6 +393,120 @@ def left_out(broken):
 """
 
 
+# The inventory, in the order the console meets it: the four the XMB draws,
+# then the one thing an install downloads, then what was read to arrive at
+# any of it. Each is named in one line, because a path under vids/ says
+# nothing about what a film here is.
+ARTEFACTS = (
+    ("icon", "icon", "ICON0.PNG out of the EBOOT, 144 by 80, what the row shows"),
+    ("screenshot", "picture", "PIC1.PNG, 480 by 272, what the card shows"),
+    ("video", "film", "ICON1.PMF, what the card plays, and no browser does"),
+    ("sound", "sound", "SND0.AT3, the loop under it, which is ATRAC3"),
+)
+
+
+# What GitHub answers with when the .pspdx leaves a field out. The three
+# optional ones are the only ones that can fall back, and a page showing
+# where a fact came from has to say which of the two wrote it.
+INSTEAD = {"author": "the file leaves it out: GitHub's owner",
+           "summary": "the file leaves it out: GitHub's description",
+           "license": "the file leaves it out: what GitHub reports"}
+
+
+def section(heading, lede, rows):
+    """One group of facts under the thing it came from."""
+    table = "\n".join(f"      <tr><th>{key}</th><td>{value}</td></tr>"
+                      for key, value in rows)
+    return f"""
+  <section class="aside">
+    <h3>{heading}</h3>
+    <p>{lede}</p>
+    <table class="facts">
+{table}
+    </table>
+  </section>
+"""
+
+
+def origins(app, out):
+    """Every fact on the page under the thing that wrote it: what the author
+    said in their file, what the release says this week, and what came out of
+    the EBOOT. A reader can then see at a glance which half of the page is
+    somebody's words and which half no hand ever touched."""
+    e = html.escape
+    release = app["release"]
+
+    said = []
+    for field, what in (("name", "name"), ("author", "author"),
+                        ("summary", "summary"), ("category", "category"),
+                        ("license", "licence"), ("installdir", "installdir")):
+        value = e(app[field]) or '<span class="gone">none</span>'
+        if field not in app["_said"]:
+            value += f'<br><span class="note">{INSTEAD[field]}</span>'
+        said.append((what, value))
+
+    published = datetime.fromtimestamp(release["rev"],
+                                       timezone.utc).strftime("%Y-%m-%d")
+    published = [
+        ("version", e(release["version"])),
+        ("published", f'{published}<br><span class="note">rev '
+                      f'{release["rev"]}, which is what an update compares'
+                      "</span>"),
+        ("package", f'<a href="{e(release["url"])}">'
+                    f'{e(release["url"].rsplit("/", 1)[-1])}</a>, '
+                    f'{size(release["size"])}<br><span class="note">'
+                    f'{release["size"]} bytes, and the only thing the console '
+                    "downloads to install</span>"),
+        ("sha256", e(release["sha256"])),
+        ("release", f'<a href="{e(app["_page"])}">{e(app["_page"])}</a>'),
+        ("repository", f'<a href="{e(app["repo"])}">{e(app["repo"])}</a>'),
+    ]
+
+    # A file the EBOOT did not carry is a row saying absent rather than no row
+    # at all: an app with no film and an app whose film the catalog dropped
+    # look the same to a reader otherwise.
+    carried = []
+    for field, what, line in ARTEFACTS:
+        if field in app:
+            path = app[field]
+            served = os.path.getsize(os.path.join(out, path))
+            told = f'<a href="{e(path)}">{e(path)}</a>, {size(served)}'
+        else:
+            told = '<span class="gone">absent: the EBOOT carried none</span>'
+        carried.append((what, f'{told}<br><span class="note">{line}</span>'))
+
+    return (
+        section("From the .pspdx",
+                "The file in the repository's root, which is the author's "
+                "consent and the author's words. Read at "
+                f'<a href="{e(app["_pspdx"])}">the ref this entry came from'
+                "</a>.", said)
+        + section("From the release",
+                  "What GitHub answers today, and all of what changes when "
+                  "the author publishes again. None of it is written by "
+                  "hand.", published)
+        + section("From the EBOOT",
+                  "The four files Sony put inside the package, taken out of "
+                  "it and served here beside the catalog.", carried)
+        + section("From the repository URL",
+                  "One fact, derived and nothing else: nobody types an id, so "
+                  "an id cannot be wrong, and a fork is its own app.",
+                  [("id", e(app["id"]))]))
+
+
+def entry_block(app):
+    """The app as the console is handed it, under everything that says where
+    each line of it came from."""
+    return f"""
+  <section class="aside">
+    <h3>In catalog.json</h3>
+    <p>And the entry itself, which is what the console reads about this app
+    and all it reads.</p>
+    <pre class="json">{shine(plain(app))}</pre>
+  </section>
+"""
+
+
 def app_page(app, out):
     """One app, as the person who has no console sees it: the icon at the
     size the XMB draws it, the picture out of the EBOOT, what the release
@@ -317,45 +525,6 @@ def app_page(app, out):
                  f'    <img src="{e(app["screenshot"])}" alt="{e(app["name"])} '
                  f'running" loading="lazy">\n  </div>\n')
 
-    # The film is an ICON1.PMF and the loop a SND0.AT3: Sony's own formats,
-    # which no browser plays, so they are linked as files rather than dressed
-    # up in a player that would show a broken frame.
-    files = []
-    if "video" in app:
-        files.append(("The film the XMB plays behind the icon, an ICON1.PMF "
-                      "video, which plays on the console and in PPSSPP.",
-                      app["video"]))
-    if "sound" in app:
-        files.append(("The loop under it, a SND0.AT3, which is ATRAC3 and "
-                      "opens in the same places.", app["sound"]))
-    aside = ""
-    if files:
-        rows = []
-        for what, path in files:
-            bytes_ = os.path.getsize(os.path.join(out, path))
-            rows.append(f'      <li>{what}<br>'
-                        f'<a href="{e(path)}">{e(path)}</a>, {size(bytes_)}</li>')
-        aside = f"""
-  <section class="aside">
-    <h3>Out of the EBOOT</h3>
-    <ul>
-{chr(10).join(rows)}
-    </ul>
-  </section>
-"""
-
-    published = datetime.fromtimestamp(release["rev"],
-                                       timezone.utc).strftime("%Y-%m-%d")
-    rows = [("version", f'{e(release["version"])}, published {published}'),
-            ("id", e(app["id"])),
-            ("installs to", e(app["installdir"])),
-            ("repository", f'<a href="{e(app["repo"])}">{e(app["repo"])}</a>'),
-            ("release", f'<a href="{e(app["_page"])}">{e(app["_page"])}</a>'),
-            ("sha256", e(release["sha256"])),
-            ("size", f'{release["size"]} bytes, {size(release["size"])}')]
-    facts = "\n".join(f"    <tr><th>{key}</th><td>{value}</td></tr>"
-                      for key, value in rows)
-
     body = f"""  <div class="hero">
     {icon}
     <div>
@@ -364,15 +533,11 @@ def app_page(app, out):
       <p>{e(app["summary"])}</p>
     </div>
   </div>
-{shots}
-  <table class="facts">
-{facts}
-  </table>
-
+{shots}{origins(app, out)}
   <a class="get" href="{e(release["url"])}">Get the zip &middot; {size(release["size"])}</a>
-{aside}"""
+{entry_block(app)}"""
     return SHELL.format(
         title=f'{e(app["name"])} - PSPDX catalog',
-        status=f'<span>{e(release["version"])}</span>'
+        status=f'<span>{e(release["version"])}</span>{CATALOG}'
                f'<span><a href="./">all apps</a></span>',
         body=body)

@@ -481,6 +481,14 @@ def entry(url, owner, repo, tag):
             "version": release["tag_name"].removeprefix("v"),
         },
         "_media": media,
+        # Where the file that consented to all of this can be read, at the ref
+        # it was read at. The page links it so that whoever wonders where a
+        # name or a summary came from reads it at its source.
+        "_pspdx": raw_url(owner, repo, ref, ".pspdx"),
+        # Which of the words above the author actually wrote: the optional
+        # three fall back to GitHub, and a page that shows where a fact came
+        # from has to know which of the two it was.
+        "_said": sorted(spec),
         "_page": release.get("html_url", url + "/releases"),
         "_tag": release["tag_name"],
         "_published": release["published_at"],
