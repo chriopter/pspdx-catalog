@@ -65,12 +65,17 @@ a { color: var(--cyan); }
 /* --- the tiles --- */
 .grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, 176px); }
 .app {
-  display: block; text-decoration: none; color: inherit;
+  display: flex; flex-direction: column; color: inherit;
   padding: 16px 16px 14px; border-radius: 4px;
   background: rgba(255,255,255,.035);
   border: 1px solid rgba(255,255,255,.07);
   transition: background .18s ease, transform .18s ease, border-color .18s ease;
 }
+.app-main { display: block; flex: 1; color: inherit; text-decoration: none; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.app .actions { gap: 6px; }
+.app .get { flex: 1 0 auto; padding: 8px 4px; font-size: 10px; letter-spacing: 0; text-align: center; white-space: nowrap; }
+a:focus-visible { outline: 2px solid var(--cyan); outline-offset: 4px; }
 .app:hover {
   background: rgba(255,255,255,.09); border-color: rgba(127,212,255,.45);
   transform: translateY(-2px);
@@ -120,7 +125,7 @@ a { color: var(--cyan); }
 .facts .note { color: var(--dim); }
 .facts .gone { color: var(--dim); }
 .get {
-  display: inline-block; margin: 26px 4px 0; padding: 11px 22px;
+  display: inline-block; padding: 11px 22px;
   border: 1px solid rgba(127,212,255,.5); border-radius: 3px;
   color: var(--cyan); text-decoration: none;
   font: 12px ui-monospace, monospace; letter-spacing: .16em; text-transform: uppercase;
@@ -255,13 +260,15 @@ SHELL = """<!doctype html>
 <script src="{base}wave.js"></script>
 """
 
-# A tile is the whole link: everything about an app lives in one directory,
-# and the directory is the address.
-TILE = """    <a class="app" href="apps/{id}/">
+# The detail link and external actions are siblings, never nested links.
+TILE = """    <article class="app">
+      <a class="app-main" href="apps/{id}/">
       {art}
       <div class="name">{name}</div>
       <div class="by">{author}</div>
-    </a>"""
+      </a>
+      {actions}
+    </article>"""
 
 # Where an app's own page sits, and how far it is from the root from there.
 HOME = "apps/{id}/"
@@ -337,6 +344,16 @@ def bar(base, *bits):
     return "".join(f"<span>{mark}</span>" for mark in marks)
 
 
+def actions(app):
+    e = html.escape
+    return (f'<div class="actions">'
+            f'<a class="get" href="{e(app["repo"])}" target="_blank" '
+            f'rel="noopener noreferrer" aria-label="{e(app["name"])} on GitHub (new tab)">GitHub ↗</a>'
+            f'<a class="get" href="{e(app["release"]["url"])}" target="_blank" '
+            f'rel="noopener noreferrer" aria-label="Download {e(app["name"])} (new tab)">Download ↗</a>'
+            '</div>')
+
+
 def render(catalog, apps, broken, out):
     """The whole site: the tiles, a directory an app with its page and its
     files, the catalog as a page, and the style and the wave they share.
@@ -354,7 +371,7 @@ def render(catalog, apps, broken, out):
                f'loading="lazy">' if "icon" in app
                else '<div class="noicon">no icon</div>')
         tiles.append(TILE.format(art=art, id=e(app["id"]), name=e(app["name"]),
-                                 author=e(app["author"])))
+                                 author=e(app["author"]), actions=actions(app)))
         home = os.path.join(out, *HOME.format(id=app["id"]).split("/")[:-1])
         os.makedirs(home, exist_ok=True)
         with open(os.path.join(home, "index.html"), "w",
@@ -543,10 +560,10 @@ def app_page(app, out):
       <div class="who">{about}</div>
       <div class="ident">{e(app["id"])}</div>
       <p>{e(app["summary"])}</p>
+      {actions(app)}
     </div>
   </div>
 {shots}{origins(app, out)}
-  <a class="get" href="{e(release["url"])}">Get the zip &middot; {size(release["size"])}</a>
 {entry_block(app)}"""
     return SHELL.format(
         title=f'{e(app["name"])} - PSPDX catalog', base=UP,
