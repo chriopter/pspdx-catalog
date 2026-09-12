@@ -299,7 +299,10 @@ def render(catalog, apps, broken, out):
 
     day = catalog["generated"].split("T")[0]
     count = f"{len(apps)} app" + ("" if len(apps) == 1 else "s")
-    body = f"""  <div class="grid">
+    body = f"""  <p class="lede">The PSPDX reference catalog.
+    <a href="https://github.com/chriopter/pspdx-catalog" target="_blank" rel="noopener noreferrer">Copy the catalog builder</a>
+    to publish your own.</p>
+  <div class="grid">
 {chr(10).join(tiles)}
   </div>
 {left_out(broken)}"""
