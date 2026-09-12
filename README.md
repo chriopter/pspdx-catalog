@@ -1,6 +1,6 @@
 # PSPDX catalog
 
-The list of PSP homebrew [PSPDX](https://github.com/chriopter/pspdx-app) shows
+The list of PSP homebrew [PSPDX](https://github.com/chriopter/pspdx) shows
 on the console. View it here: https://chriopter.github.io/pspdx-catalog/
 
 To list an app: a root `.pspdx`, a release with exactly one ZIP containing

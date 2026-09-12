@@ -1,7 +1,7 @@
 # The list PSPDX ships with: one GitHub repository a line, and @tag after
 # the URL to pin a release. What the app is called, what it is and where
 # it goes, the repository says itself, in the .pspdx in its root:
-# https://github.com/chriopter/pspdx/blob/master/manifest.md
+# https://github.com/chriopter/pspdx-schema/blob/master/manifest.md
 
 https://github.com/chriopter/pspdx-demo
 https://github.com/chriopter/psp-rust-raytracer
