@@ -21,3 +21,30 @@ Built every time, committed never.
 - `index.html` and one page an app, for whoever has no PSP.
 - `icons/ shots/ vids/ snd/` hold the media out of each EBOOT.
 - `state.json` is what the last run saw, so the next one can tell.
+
+## How a run works
+
+```
+repos.txt                    one GitHub URL a line
+    |
+    v
+deploy.yml                   hourly, on push, on request
+    |
+    v
+look.py                      for each repo:
+    |                          .pspdx        checked against the format
+    |                          GitHub API    release, date, description
+    |                          the zip       hashed, EBOOT read
+    |                          the EBOOT     icon, picture, film, sound
+    v
+site/    catalog.json   icons/ shots/ vids/ snd/   state.json
+    |                                |
+    |                                +-- page.py --> index.html, a page an app
+    v
+state.json vs the published one
+    |                    |
+  same                different
+    |                    |
+    v                    v
+ nothing           deploy to Pages --> the PSP fetches catalog.json
+```
