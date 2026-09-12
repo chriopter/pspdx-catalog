@@ -20,179 +20,78 @@ import os
 import struct
 from datetime import datetime, timezone
 
-STYLE = """/* The XMB, more or less: a blue wave over near-black, thin wide type, and
-   icons at the size the console draws them. */
-:root {
-  --ink: #f2f6fb; --dim: #93a6bd; --cyan: #7fd4ff;
-  --rule: rgba(255,255,255,.10);
-  color-scheme: dark;
-}
+STYLE = """/* Quiet framing, with the PSP wave kept behind the content. */
+:root { --ink: #e7edf5; --dim: #9baabe; --cyan: #8ec9eb; --rule: #ffffff18; color-scheme: dark; }
 * { box-sizing: border-box; }
-html { background: #04070d; }
-body {
-  margin: 0; padding: 0 20px 72px; color: var(--ink); min-height: 100vh;
-  font: 15px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  background:
-    radial-gradient(130% 70% at 50% -20%, #1d4478 0%, #0d1e3d 42%, #05090f 100%)
-    no-repeat, #04070d;
-  -webkit-font-smoothing: antialiased;
-}
-#wave {
-  position: fixed; inset: 0; z-index: 0; pointer-events: none;
-  width: 100%; height: 100%; display: block;
-}
-.wrap { position: relative; z-index: 1; max-width: 1000px; margin: 0 auto; }
-
-header {
-  display: flex; align-items: baseline; justify-content: space-between;
-  gap: 16px; flex-wrap: wrap;
-  padding: 34px 4px 14px; border-bottom: 1px solid var(--rule);
-}
-h1 {
-  margin: 0; font-size: 22px; font-weight: 300; letter-spacing: .38em;
-  text-transform: uppercase;
-}
-h1 b { font-weight: 600; letter-spacing: .3em; }
+html { background: #0a1422; }
+body { margin: 0; padding: 0 24px 40px; color: var(--ink); font: 14px/1.6 system-ui, sans-serif; }
+#wave { position: fixed; inset: 0; width: 100%; height: 100%; opacity: .13; pointer-events: none; }
+.wrap { position: relative; max-width: 1040px; margin: auto; }
+a { color: var(--cyan); text-underline-offset: 3px; }
+a:hover { color: #fff; }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--cyan); outline-offset: 4px; }
+header { display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap; padding: 24px 0; border-bottom: 1px solid var(--rule); }
+h1 { margin: 0; font-size: 17px; font-weight: 400; letter-spacing: .04em; }
+h1 b { font-weight: 650; }
 h1 a { color: inherit; text-decoration: none; }
-.status {
-  font: 11px ui-monospace, SFMono-Regular, Menlo, monospace;
-  letter-spacing: .16em; text-transform: uppercase; color: var(--dim);
-  display: flex; gap: 16px; flex-wrap: wrap;
-}
-.lede { margin: 22px 4px 30px; max-width: 62ch; color: var(--dim); font-weight: 300; }
-a { color: var(--cyan); }
-
-/* --- the tiles --- */
-.grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, 176px); }
-.app {
-  display: flex; flex-direction: column; color: inherit;
-  padding: 16px 16px 14px; border-radius: 4px;
-  background: rgba(255,255,255,.035);
-  border: 1px solid rgba(255,255,255,.07);
-  transition: background .18s ease, transform .18s ease, border-color .18s ease;
-}
-.app-main { display: block; flex: 1; color: inherit; text-decoration: none; }
-.actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
-.app .actions { gap: 6px; }
-a:focus-visible { outline: 2px solid var(--cyan); outline-offset: 4px; }
-.app:hover {
-  background: rgba(255,255,255,.09); border-color: rgba(127,212,255,.45);
-  transform: translateY(-2px);
-}
-.app img, .noicon { width: 144px; height: 80px; display: block;
-  box-shadow: 0 8px 18px rgba(0,0,0,.55); }
-.noicon {
-  display: grid; place-items: center; color: var(--dim); box-shadow: none;
-  border: 1px dashed var(--rule);
-  font: 10px ui-monospace, monospace; letter-spacing: .18em;
-}
-.name { margin-top: 12px; font-size: 13.5px; line-height: 1.3; }
-.app:hover .name { color: var(--cyan); }
-.by {
-  margin-top: 3px;
-  font: 11px ui-monospace, SFMono-Regular, Menlo, monospace;
-  letter-spacing: .08em; color: var(--dim);
-}
-
-/* --- one app --- */
-.hero { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap;
-  padding: 30px 4px 24px; }
-.hero img { width: 144px; height: 80px; box-shadow: 0 10px 22px rgba(0,0,0,.55); }
-.hero h2 { margin: 0 0 4px; font-size: 26px; font-weight: 400; letter-spacing: -.01em; }
-.hero .who { color: var(--dim); font-size: 13px; }
-.hero .ident {
-  margin-top: 6px; color: var(--dim);
-  font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .06em;
-}
-.hero p { margin: 12px 0 0; max-width: 56ch; color: var(--dim); font-weight: 300; }
-.shots { display: flex; gap: 16px; flex-wrap: wrap; padding: 8px 4px 26px; }
-.shots img {
-  width: 480px; max-width: 100%; height: auto; display: block;
-  box-shadow: 0 12px 30px rgba(0,0,0,.6); background: #000;
-}
-.facts {
-  width: 100%; border-collapse: collapse; margin: 0 4px;
-  font: 12px ui-monospace, SFMono-Regular, Menlo, monospace;
-}
-.facts th, .facts td {
-  text-align: left; padding: 5px 0; border-top: 1px solid var(--rule);
-  vertical-align: top;
-}
-.facts th { width: 130px; font-weight: 400; color: var(--dim);
-  letter-spacing: .12em; text-transform: uppercase; }
-.facts td { word-break: break-all; }
-.facts .note { color: var(--dim); }
-.facts .gone { color: var(--dim); }
-.get {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 40px; height: 40px;
-  border: 1px solid rgba(127,212,255,.5); border-radius: 3px;
-  color: var(--cyan); text-decoration: none;
-}
+.status { display: flex; gap: 18px; flex-wrap: wrap; color: var(--dim); font-size: 12px; }
+.status a { text-decoration: none; }
+.lede { color: var(--dim); margin: 24px 0; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 24px; padding: 28px 0; }
+.app { display: flex; flex-direction: column; max-width: 220px; }
+.app-main { flex: 1; color: inherit; text-decoration: none; }
+.app img, .noicon { display: block; width: 100%; aspect-ratio: 144 / 80; object-fit: contain; background: #080e17; }
+.noicon { display: grid; place-items: center; color: var(--dim); }
+.name { margin-top: 12px; font-weight: 550; }
+.by { color: var(--dim); font-size: 12px; }
+.app-main:hover .name { color: var(--cyan); }
+.actions { display: flex; gap: 8px; }
+.app .actions { margin-top: 12px; }
+.get { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border: 1px solid var(--rule); border-radius: 4px; color: var(--cyan); }
+.get:hover { background: #ffffff08; border-color: var(--cyan); }
 .get svg { width: 18px; height: 18px; }
-.get:hover { background: rgba(127,212,255,.12); }
-
-/* --- the files a browser cannot open, and the apps that are not here ---
-   Both are footnotes: a thin rule, small monospace, and no colour that
-   competes with the app itself. */
-.aside { margin: 38px 4px 0; padding-top: 16px; border-top: 1px solid var(--rule); }
-.aside h3 {
-  margin: 0 0 6px; font-size: 12px; font-weight: 400; color: var(--dim);
-  letter-spacing: .2em; text-transform: uppercase;
-}
-.aside p { margin: 0 0 10px; max-width: 62ch; color: var(--dim); font-size: 13px; }
-/* The two little links on a heading line: where this group of values was
-   read, and where it can be read now. */
-.aside h3 a {
-  margin-left: 10px; font-size: 11px; letter-spacing: .1em;
-  text-transform: none; text-decoration: none; border-bottom: 1px solid rgba(127,212,255,.35);
-}
-.aside ul { margin: 0; padding: 0; list-style: none; }
-.aside li {
-  padding: 7px 0; border-top: 1px solid rgba(255,255,255,.06);
-  font: 12px ui-monospace, SFMono-Regular, Menlo, monospace;
-  letter-spacing: .04em; word-break: break-word; color: var(--dim);
-}
-.aside .why { color: #e0a2a2; }
-/* The table inside a section keeps the section's own gutter and adds none. */
-.aside .facts { margin: 0; }
+.hero { display: flex; align-items: center; gap: 20px; padding: 32px 0; }
+.hero img { width: 108px; height: 60px; object-fit: contain; }
+.hero > div:not(.actions) { flex: 1; min-width: 0; }
+.hero h2 { margin: 0 0 3px; font-size: 28px; font-weight: 550; letter-spacing: -.035em; line-height: 1.2; }
+.hero .who { font-size: 12px; color: var(--dim); }
+.hero p { margin: 10px 0 0; color: var(--dim); }
+.hero .actions { flex-shrink: 0; }
+.detail-columns { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 32px; padding-bottom: 28px; }
+.detail-columns > div { min-width: 0; }
+.shots { margin: 0 0 22px; }
+.shots img { display: block; width: 100%; height: auto; }
+.aside { border-top: 1px solid var(--rule); padding: 16px 0; }
+.detail-columns .aside { border-top: 0; padding: 0; }
+.aside h3, .aside summary { margin: 0 0 12px; font-size: 13px; font-weight: 600; }
+.aside summary { cursor: pointer; margin: 0; }
+.aside[open] summary { margin-bottom: 16px; }
+.aside h3 a, .aside summary a { margin-left: 12px; font-weight: 400; font-size: 12px; }
+.facts { width: 100%; border-collapse: collapse; font-size: 12px; }
+.facts th, .facts td { text-align: left; vertical-align: top; padding: 7px 0; border-bottom: 1px solid var(--rule); }
+.facts th { width: 84px; color: var(--dim); font-weight: 400; padding-right: 12px; }
+.facts td { overflow-wrap: anywhere; }
+.facts .note { color: var(--dim); margin-left: 6px; font-size: 11px; }
 .gone { color: var(--dim); }
-
-/* catalog.json as it is, coloured by walking it: keys in the accent, strings
-   in sand, numbers in the same rose the reasons are written in. */
-pre.json {
-  margin: 0; padding: 14px 16px; overflow-x: auto;
-  border: 1px solid var(--rule); border-radius: 4px;
-  background: rgba(0,0,0,.32);
-  font: 12px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace;
-  color: var(--ink);
-}
+.aside ul { padding-left: 18px; }
+.aside .why { color: #dbb0a7; }
+pre.json { margin: 0; padding: 16px; overflow-x: auto; background: #070e18; font: 12px/1.7 ui-monospace, monospace; }
 pre.json .k { color: var(--cyan); }
-pre.json .s { color: #e6cf9c; }
-pre.json .n { color: #e0a2a2; }
+pre.json .s { color: #bdc9d6; }
+pre.json .n { color: #c7bca7; }
 pre.json .p { color: var(--dim); }
 pre.json a { color: inherit; }
-
-footer {
-  margin-top: 40px; padding: 14px 4px 0; border-top: 1px solid var(--rule);
-  display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
-  font: 11px ui-monospace, SFMono-Regular, Menlo, monospace;
-  letter-spacing: .14em; text-transform: uppercase; color: var(--dim);
-}
-.glyph {
-  display: inline-grid; place-items: center; width: 15px; height: 15px;
-  border: 1px solid currentColor; border-radius: 50%; font-size: 9px;
-  vertical-align: -3px; margin-right: 5px;
-}
-
-/* A phone is narrower than one tile plus the padding, so the grid gives up
-   its fixed column and the wide letter-spacing gives up some of its width. */
-@media (max-width: 480px) {
-  body { padding: 0 14px 56px; }
-  h1 { letter-spacing: .22em; font-size: 19px; }
-  .grid { grid-template-columns: repeat(auto-fill, minmax(0, 176px)); }
-  .app img, .noicon, .hero img { width: 100%; height: auto; aspect-ratio: 144 / 80; }
-  .facts th { width: 96px; letter-spacing: .06em; }
+footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--rule); color: var(--dim); font-size: 11px; }
+.glyph { margin-right: 6px; }
+@media (max-width: 720px) {
+  body { padding: 0 18px 28px; }
+  header { gap: 12px; padding: 18px 0; }
+  .hero { flex-wrap: wrap; gap: 14px; padding: 24px 0; }
+  .hero img { width: 72px; height: 40px; }
+  .hero h2 { font-size: 24px; }
+  .hero .actions { width: 100%; }
+  .detail-columns { grid-template-columns: 1fr; gap: 24px; }
+  .grid { grid-template-columns: repeat(auto-fill, minmax(144px, 1fr)); gap: 20px; }
 }
 """
 
@@ -467,18 +366,20 @@ def pixels(path):
     return ""
 
 
-def section(heading, rows):
+def section(heading, rows, folded=False):
     """One group of values under the thing they came from. The heading says
     where they are from; nothing else on the page has to."""
     table = "\n".join(f"      <tr><th>{key}</th><td>{value}</td></tr>"
                       for key, value in rows)
+    tag = "details" if folded else "section"
+    title = "summary" if folded else "h3"
     return f"""
-  <section class="aside">
-    <h3>{heading}</h3>
+  <{tag} class="aside">
+    <{title}>{heading}</{title}>
     <table class="facts">
 {table}
     </table>
-  </section>
+  </{tag}>
 """
 
 
@@ -536,20 +437,21 @@ def origins(app, out):
             told = f'{called} <span class="gone">absent</span>'
         carried.append((what, told))
 
-    return (section(f'From the .pspdx <a href="read.pspdx">as read</a>'
-                    f'<a href="{e(app["_pspdx"])}">source</a>', said)
-            + section("From the release", published)
-            + section("From the EBOOT", carried))
+    said.insert(0, ("id", e(app["id"])))
+    return (section(f'Manifest <a href="read.pspdx">as read</a>'
+                    f'<a href="{e(app["_pspdx"])}">source</a>', said, folded=True),
+            section("Release", published),
+            section("EBOOT media", carried))
 
 
 def entry_block(app):
     """The app as the console is handed it, under everything that says where
     each line of it came from."""
     return f"""
-  <section class="aside">
-    <h3>In catalog.json</h3>
+  <details class="aside">
+    <summary>Catalog JSON</summary>
     <pre class="json">{shine(plain(app))}</pre>
-  </section>
+  </details>
 """
 
 
@@ -571,18 +473,24 @@ def app_page(app, out):
                  f'    <img src="{e(beside(app, "screenshot"))}" '
                  f'alt="{e(app["name"])} running" loading="lazy">\n  </div>\n')
 
-    body = f"""  <div class="hero">
+    manifest, published, media = origins(app, out)
+    body = f"""  <main class="detail">
+  <div class="hero">
     {icon}
     <div>
       <h2>{e(app["name"])}</h2>
       <div class="who">{about}</div>
-      <div class="ident">{e(app["id"])}</div>
       <p>{e(app["summary"])}</p>
-      {actions(app)}
     </div>
+    {actions(app)}
   </div>
-{shots}{origins(app, out)}
+  <div class="detail-columns">
+    <div class="preview">{shots}{media}</div>
+    <div class="release">{published}</div>
+  </div>
+{manifest}
 {entry_block(app)}"""
+    body += "</main>"
     return SHELL.format(
         title=f'{e(app["name"])} - PSPDX catalog', base=UP,
         status=bar(UP, e(release["version"]),
