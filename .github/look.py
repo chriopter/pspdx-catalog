@@ -7,11 +7,20 @@ whoever lands on the site.
     look.py --list <file>      another list
     look.py --out <dir>        write the site somewhere else
 
-There is no state in this repository. The published `state.json` is what the
-last run saw, so the comparison is against the live site, and a run that
-finds nothing new publishes nothing, which is most hours. What the apps say
-about themselves is read every time and kept nowhere: the next run derives
-it all again.
+    LIVE=<url>                 the published catalog.json, which is the memory
+    FORCE=1                    forget it and read everything again
+    GITHUB_TOKEN=<token>       raises the rate limit; a run needs one
+
+There is no state in this repository. The published `catalog.json` is the
+memory: a repository whose release is the one already in it is copied out of
+it and nothing of that app is fetched, and a run that ends with the same
+catalog publishes nothing, which is most hours. That is the whole saving,
+and it is the only reason this can run hourly over a list with a 44 MB port
+on it.
+
+What it costs is one thing: an author who edits their `.pspdx` and publishes
+no release is not noticed until they do. That is accepted, and `FORCE=1`
+reads everything from scratch for the hours when it is not.
 
 An app is a GitHub repository that says so: a `.pspdx` file in its root, and
 a release that carries one zip with an EBOOT.PBP in it. The file is the
@@ -23,6 +32,7 @@ should keep running in ten years. The `.pspdx` is checked by hand against the
 rules in schema/v1.pspdx rather than handed to a validator module, for the
 same reason, and because a reason that reads like a sentence is what an
 author needs to fix their file."""
+import concurrent.futures
 import hashlib
 import io
 import json
@@ -41,7 +51,18 @@ import page
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TOKEN = os.environ.get("GITHUB_TOKEN")
+
+# The catalog that is up now: the memory, and the thing the new one is
+# compared against. Empty, unreachable or FORCE=1 all mean the same thing,
+# which is what the first run does anyway: read everything.
 LIVE = os.environ.get("LIVE", "")
+FORCE = os.environ.get("FORCE", "") == "1"
+
+# How many repositories are asked at once. A quiet hour is one small API call
+# an app and nothing else, and asking them one after another is a minute of
+# waiting for a list that will one day be long. Eight is polite to GitHub and
+# plenty: the wait is the network, not this process.
+WORKERS = 8
 
 # The catalog names itself: a file found on a stick years from now says where
 # it came from and which version of the format it is.
@@ -83,14 +104,24 @@ SECTIONS = {"ICON0.PNG": ("icon", ".png"),
             "ICON1.PMF": ("video", ".pmf"),
             "SND0.AT3": ("sound", ".at3")}
 
-# Field -> where it is served and how big it may be. The caps exist because
-# these are copied onto a public page and pulled by a console with 24 MB of
-# RAM; the PBP format puts no limit on any of them. None of the four is
-# required: a PBP that carries no sound is simply an app without one.
-MEDIA = {"icon": ("icons", 64 * 1024),
-         "screenshot": ("shots", 768 * 1024),
-         "video": ("vids", 8 * 1024 * 1024),
-         "sound": ("snd", 2 * 1024 * 1024)}
+# Field -> what it is called beside the app's page, and how big it may be.
+# The caps exist because these are copied onto a public page and pulled by a
+# console with 24 MB of RAM; the PBP format puts no limit on any of them.
+# None of the four is required: a PBP that carries no sound is simply an app
+# without one.
+MEDIA = {"icon": ("icon", 64 * 1024),
+         "screenshot": ("picture", 768 * 1024),
+         "video": ("film", 8 * 1024 * 1024),
+         "sound": ("sound", 2 * 1024 * 1024)}
+
+# Everything about one app lives in one directory, named by its id: its page,
+# its four files and the .pspdx the run read. A reader can see the whole of
+# an app in one listing, and a run deletes the lot and writes it again.
+APPS = "apps"
+
+# The .pspdx as it was read, mirrored beside the page, so that what the
+# catalog used is readable next to what the repository says today.
+READ = "read.pspdx"
 
 # What a file of each kind starts with, so that a section is what its name in
 # the header claims and not whatever the author's packer put there.
@@ -274,7 +305,10 @@ def read_pspdx(owner, repo, ref):
         raise Problem(".pspdx is not UTF-8") from None
     except ValueError as e:
         raise Problem(f".pspdx is not JSON: {e}") from None
-    return validate(data)
+    # The bytes come back with the parsed file: what the catalog used is
+    # mirrored beside the app's page, and a copy is only honest if it is the
+    # copy that was read.
+    return validate(data), raw
 
 
 # --- the package ------------------------------------------------------------
@@ -355,14 +389,18 @@ def sfo_strings(data):
     return out
 
 
-def package(asset):
+def package(asset, log):
     """Downloads the zip GitHub named, checks it is the size GitHub said, and
     returns (sha256, the package directory, the SFO, the PBP sections). This
-    is the part the console cannot afford and the reason the cache exists."""
+    is the part the console cannot afford and the reason the cache exists.
+
+    What it has to say goes on `log` rather than to the screen: several of
+    these run at once, and a log with two repositories talking over each
+    other is no log."""
     if asset["size"] > MAX_ASSET:
         raise Problem(f"{asset['name']} is {asset['size']} bytes, "
                       f"over the {MAX_ASSET} cap")
-    print(f"  fetching {asset['name']}, {asset['size']} bytes")
+    log.append(f"fetching {asset['name']}, {asset['size']} bytes")
     raw = fetch(asset["browser_download_url"], asset["size"], asset["name"])
     # GitHub says how big the asset is before it is fetched, so a short or a
     # padded answer is caught here rather than as a puzzling zip error.
@@ -411,24 +449,86 @@ def pictures(sections):
 
 # --- one entry --------------------------------------------------------------
 
-def entry(url, owner, repo, tag):
-    """The app as the catalog carries it, or a Problem saying why it is not
-    listed."""
+def again(known, ref, owner, repo, release):
+    """The entry out of the published catalog, word for word, and no media
+    yet: whether this run publishes at all is not known while the list is
+    being walked, and an hour that publishes nothing should cost nothing.
+    `complete` fetches the files afterwards, for the runs that do.
+
+    Nothing here is derived a second time: the release is the one that was
+    read the day this entry was written, so re-reading the .pspdx and the zip
+    could only produce the same object at the cost of the whole download."""
+    app = dict(known)
+    app["_pspdx"] = raw_url(owner, repo, ref, ".pspdx")
+    app["_page"] = release.get("html_url", app["repo"] + "/releases")
+    # No `_said`: which fields the author wrote and which fell back to GitHub
+    # is in the .pspdx, which was not read. The page shows no origin for them
+    # rather than guessing at one.
+    return app
+
+
+def served(known):
+    """Everything the published site holds beside this entry's page, fetched
+    back: its media in the shape a fresh read produces, and the .pspdx the
+    run that wrote it read. Anything gone, too big or not what it claims is a
+    Problem, and the caller then reads the app the long way, which puts all
+    of it back."""
+    if not LIVE:
+        raise Problem("no published catalog to copy the files from")
+    media = {}
+    for field, (_, cap) in MEDIA.items():
+        if field not in known:
+            continue
+        where = urllib.parse.urljoin(LIVE, known[field])
+        data = fetch(where, cap, f"the published {field}")
+        suffix = os.path.splitext(known[field])[1]
+        if suffix not in MAGIC or not data.startswith(MAGIC[suffix]):
+            raise Problem(f"the published {field} is not a {suffix} file")
+        media[field] = (suffix, data)
+    raw = fetch(urllib.parse.urljoin(LIVE, f"{APPS}/{known['id']}/{READ}"),
+                MAX_PSPDX, f"the published {READ}")
+    return media, raw
+
+
+def entry(url, owner, repo, tag, known):
+    """The app as the catalog carries it and the lines the log should show
+    for it, or a Problem saying why it is not listed. `known` is what the
+    published catalog says about this id, and is used when the release it
+    names is still the release GitHub names.
+
+    Several of these run at once, so it says nothing itself: what it has to
+    report it hands back, and the caller prints it in the list's order."""
+    log = []
     ref = tag or "HEAD"
-    # The file first: a repository without one is not an app, and nothing
-    # else needs asking.
-    spec = read_pspdx(owner, repo, ref)
-    meta = api(f"/repos/{owner}/{repo}", "repository")
+    # The release first, because it is the cheap question that decides
+    # whether any of the expensive ones have to be asked at all.
     where = (f"/releases/tags/{urllib.parse.quote(tag)}" if tag
              else "/releases/latest")
     release = api(f"/repos/{owner}/{repo}{where}", "release")
-    if not isinstance(meta, dict) or not isinstance(release, dict) \
-            or "tag_name" not in release:
-        raise Problem("GitHub answered with something other than a repository "
-                      "and a release")
+    if not isinstance(release, dict) or "tag_name" not in release:
+        raise Problem("GitHub answered with something other than a release")
     # /releases/latest never answers with one of these; a pinned tag can.
     if release.get("draft") or release.get("prerelease"):
         raise Problem(f"{release['tag_name']} is a draft or a pre-release")
+    try:
+        published = datetime.fromisoformat(
+            release["published_at"].replace("Z", "+00:00"))
+    except (KeyError, TypeError, ValueError, AttributeError):
+        raise Problem("the release has no published_at") from None
+    version = release["tag_name"].removeprefix("v")
+    rev = int(published.timestamp())
+
+    # The same version published at the same second is the same release, and
+    # the same release is the same package: what the catalog says about it
+    # cannot have changed without the author publishing again.
+    was = (known or {}).get("release", {})
+    if known and was.get("version") == version and was.get("rev") == rev:
+        return again(known, ref, owner, repo, release), [f"unchanged, {version}"]
+
+    spec, raw = read_pspdx(owner, repo, ref)
+    meta = api(f"/repos/{owner}/{repo}", "repository")
+    if not isinstance(meta, dict):
+        raise Problem("GitHub answered with something other than a repository")
 
     zips = [a for a in release.get("assets", [])
             if a["name"].lower().endswith(".zip")]
@@ -439,21 +539,15 @@ def entry(url, owner, repo, tag):
                       + ", ".join(a["name"] for a in zips)
                       + "; one release is one package")
     asset = zips[0]
-    try:
-        published = datetime.fromisoformat(
-            release["published_at"].replace("Z", "+00:00"))
-    except (KeyError, TypeError, ValueError, AttributeError):
-        raise Problem("the release has no published_at") from None
 
-    sha, root, sfo, sections = package(asset)
+    sha, root, sfo, sections = package(asset, log)
     # The package and the title are said out loud rather than served: the
     # console copies the package into installdir and reads the title off the
     # stick, and whoever reads this log is looking for the zip's own shape.
-    print(f"  {root or 'the zip itself'} is the package, "
-          f"PARAM.SFO says {sfo['TITLE']!r}")
+    log.append(f"{root or 'the zip itself'} is the package, "
+               f"PARAM.SFO says {sfo['TITLE']!r}")
     media, notes = pictures(sections)
-    for note in notes:
-        print(f"  {note}")
+    log.extend(notes)
 
     # The licence GitHub reports when it recognises the file; NOASSERTION is
     # its word for a file it cannot place, and that is no licence to list.
@@ -474,13 +568,14 @@ def entry(url, owner, repo, tag):
         "repo": url,
         "installdir": spec["installdir"],
         "release": {
-            "rev": int(published.timestamp()),
+            "rev": rev,
             "url": asset["browser_download_url"],
             "sha256": sha,
             "size": asset["size"],
-            "version": release["tag_name"].removeprefix("v"),
+            "version": version,
         },
         "_media": media,
+        "_raw": raw,
         # Where the file that consented to all of this can be read, at the ref
         # it was read at. The page links it so that whoever wonders where a
         # name or a summary came from reads it at its source.
@@ -490,44 +585,56 @@ def entry(url, owner, repo, tag):
         # from has to know which of the two it was.
         "_said": sorted(spec),
         "_page": release.get("html_url", url + "/releases"),
-        "_tag": release["tag_name"],
-        "_published": release["published_at"],
     }
-    return app
+    log.append(f"{app['id']} {version}: {app['name']!r}, "
+               + (", ".join(sorted(media)) or "nothing in the PBP"))
+    return app, log
 
 
 # --- the site ---------------------------------------------------------------
 
-def write_site(apps, broken, state, out):
-    for subdir, _ in MEDIA.values():
-        # Whatever a previous run left here is not evidence that the file is
-        # still in anybody's EBOOT.
-        shutil.rmtree(os.path.join(out, subdir), ignore_errors=True)
-    for app in apps:
-        for field, (suffix, data) in app.pop("_media").items():
-            subdir, _ = MEDIA[field]
-            # The name carries the bytes: a client caches a picture by the
-            # name it was fetched under and never asks again, so a changed
-            # icon or clip has to arrive under a new name or it never arrives.
-            served = f"{app['id']}-{sha256(data)[:8]}{suffix}"
-            os.makedirs(os.path.join(out, subdir), exist_ok=True)
-            with open(os.path.join(out, subdir, served), "wb") as picture:
-                picture.write(data)
-            app[field] = f"{subdir}/{served}"
+def shape(apps, generated):
+    """Where each media file will be served, and the catalog that says so.
 
-    catalog = {
+    Everything of one app sits in one directory named by its id, and the
+    name of each file still carries its bytes: a client caches a picture by
+    the name it was fetched under and never asks again, so a changed icon has
+    to arrive under a new name or it never arrives. The same bytes therefore
+    land on the same name, which is why an entry copied out of the published
+    catalog keeps the paths it already has.
+
+    Nothing is written here, because this is also what the run compares
+    against the published catalog before deciding to write anything at all."""
+    for app in apps:
+        for field, (suffix, data) in app.get("_media", {}).items():
+            called, _ = MEDIA[field]
+            app[field] = (f"{APPS}/{app['id']}/"
+                          f"{called}-{sha256(data)[:8]}{suffix}")
+    return {
         "schema": SCHEMA,
-        "generated": state["generated"],
+        "generated": generated,
         "apps": [{k: v for k, v in app.items() if not k.startswith("_")}
                  for app in apps],
     }
+
+
+def write_site(apps, broken, catalog, out):
+    # Whatever a previous run left here is not evidence that any of it is
+    # still in anybody's EBOOT, or that the app is still on the list.
+    shutil.rmtree(os.path.join(out, APPS), ignore_errors=True)
+    for app in apps:
+        home = os.path.join(out, APPS, app["id"])
+        os.makedirs(home, exist_ok=True)
+        for field, (_, data) in app.pop("_media", {}).items():
+            with open(os.path.join(out, *app[field].split("/")), "wb") as file:
+                file.write(data)
+        with open(os.path.join(home, READ), "wb") as file:
+            file.write(app.pop("_raw"))
+
     # Compact separators: the console holds this in RAM, and a PSP has 24 MB.
     text = json.dumps(catalog, ensure_ascii=False, separators=(",", ":"))
     with open(os.path.join(out, "catalog.json"), "w", encoding="utf-8") as file:
         file.write(text + "\n")
-    with open(os.path.join(out, "state.json"), "w", encoding="utf-8") as file:
-        json.dump(state, file, indent=2)
-        file.write("\n")
     # The site is more than one file now: the tiles, a page an app, and the
     # style and the wave they share, so the pages write themselves. It comes
     # after the pictures because a page measures the film and the sound where
@@ -540,14 +647,100 @@ def write_site(apps, broken, state, out):
           f"{len(text)} bytes -> " + os.path.join(out, "catalog.json"))
 
 
-def hashed(*paths):
-    """One digest over some files, so that a change in any of them is a
-    change."""
-    digest = hashlib.sha256()
-    for path in paths:
-        with open(path, "rb") as file:
-            digest.update(file.read())
-    return digest.hexdigest()
+def memory():
+    """The catalog that is published now, which is the only memory there is,
+    or None when there is none to be had: the first run, an unreachable site,
+    something that is not a catalog, or a run told to forget."""
+    if FORCE:
+        print("FORCE=1: reading every repository from scratch")
+        return None
+    if not LIVE:
+        return None
+    try:
+        request = urllib.request.Request(LIVE, headers={"User-Agent": "pspdx-catalog"})
+        with urllib.request.urlopen(request, timeout=30) as answer:
+            live = json.load(answer)
+    except Exception as ex:
+        print(f"no catalog at {LIVE} ({ex}); reading every repository")
+        return None
+    if not isinstance(live, dict) or not isinstance(live.get("apps"), list):
+        print(f"what is at {LIVE} is not a catalog; reading every repository")
+        return None
+    return live
+
+
+def unlike(catalog, live):
+    """Whether the new catalog says anything the published one does not. The
+    minute it was made is not something it says: two runs an hour apart that
+    found the same releases are the same catalog."""
+    if live is None:
+        return True
+    return ({k: v for k, v in catalog.items() if k != "generated"}
+            != {k: v for k, v in live.items() if k != "generated"})
+
+
+def walk(lines, known):
+    """Every repository on the list, asked at once and reported in the
+    list's order: the result of each is printed when it is collected, not
+    from inside the thread that found it, so a log still reads top to bottom.
+
+    One broken repository never ends the run, here as everywhere: the reason
+    is kept, the rest of the list is still read, and what could be derived is
+    still published."""
+    apps, broken = [], []
+    with concurrent.futures.ThreadPoolExecutor(WORKERS) as pool:
+        jobs = [(line, pool.submit(entry, *line, known.get(ident(line[1], line[2]))))
+                for line in lines]
+        for (url, owner, repo, tag), job in jobs:
+            label = url + (f"@{tag}" if tag else "")
+            print(label)
+            try:
+                app, log = job.result()
+            except Problem as ex:
+                print(f"  {ex}")
+                broken.append((label, str(ex)))
+            except Exception as ex:
+                print(f"  {type(ex).__name__}: {ex}")
+                broken.append((label, f"{type(ex).__name__}: {ex}"))
+            else:
+                for line in log:
+                    print(f"  {line}")
+                apps.append(app)
+    return apps, broken
+
+
+def complete(apps, broken, lines):
+    """The media of every entry copied out of the published catalog, fetched
+    off the live site now that it is known there will be a deploy.
+
+    A file the site no longer has is a hole in the site, and reading that one
+    app the long way is what fills it. That costs a zip, in the run that was
+    going to publish anyway, and it means a gap heals itself rather than
+    being copied forward for ever."""
+    reused = [app for app in apps if "_media" not in app]
+    if not reused:
+        return apps, broken
+    print(f"fetching the media of {len(reused)} unchanged "
+          f"app{'' if len(reused) == 1 else 's'}")
+    holes = []
+    with concurrent.futures.ThreadPoolExecutor(WORKERS) as pool:
+        jobs = [(app, pool.submit(served, app)) for app in reused]
+        for app, job in jobs:
+            try:
+                app["_media"], app["_raw"] = job.result()
+            except Problem as ex:
+                print(f"  {app['id']}: {ex}; reading it again")
+                holes.append(app)
+            except Exception as ex:
+                print(f"  {app['id']}: {type(ex).__name__}: {ex}; reading it again")
+                holes.append(app)
+    if holes:
+        whose = {ident(line[1], line[2]): line for line in lines}
+        read, broke = walk([whose[app["id"]] for app in holes], {})
+        apps = [app for app in apps if app not in holes] + read
+        broken = broken + broke
+        apps.sort(key=lambda app: app["id"])
+    return apps, broken
 
 
 def output(name, value):
@@ -568,69 +761,32 @@ def main(argv):
             raise SystemExit(__doc__)
         argv = argv[2:]
 
-    state = {
-        "generated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        # The list and the code decide what the catalog says as much as the
-        # releases do, so a line added to one or a rule changed in the other
-        # has to reach the site even in an hour when nobody released anything.
-        "list": hashed(listing),
-        "code": hashed(os.path.abspath(__file__), os.path.abspath(page.__file__)),
-        "repos": {},
-    }
+    generated = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    live = memory()
+    known = {app["id"]: app for app in (live or {}).get("apps", [])
+             if isinstance(app, dict) and "id" in app}
 
-    apps, broken = [], []
-    for url, owner, repo, tag in repos(listing):
-        label = url + (f"@{tag}" if tag else "")
-        print(label)
-        # Everything sits inside the try: one broken release must not end the
-        # run before the rest of the list has been looked at.
-        try:
-            app = entry(url, owner, repo, tag)
-            print(f"  {app['id']} {app['release']['version']}: {app['name']!r}, "
-                  + (", ".join(sorted(app["_media"])) or "nothing in the PBP"))
-        except Problem as ex:
-            app = None
-            print(f"  {ex}")
-            broken.append((label, str(ex)))
-        except Exception as ex:
-            app = None
-            print(f"  {type(ex).__name__}: {ex}")
-            broken.append((label, f"{type(ex).__name__}: {ex}"))
-        # The memory is the release of every repository that is listed, and
-        # nothing for one that is not: a repository whose file or zip is
-        # broken looks the same every hour and stays quiet, and the hour it
-        # is mended its release appears here and the site is written again.
-        state["repos"][f"{owner}/{repo}"] = {
-            "tag": app["_tag"] if app else None,
-            "published": app["_published"] if app else None,
-        }
-        if app:
-            apps.append(app)
-
+    lines = repos(listing)
+    apps, broken = walk(lines, known)
     apps.sort(key=lambda app: app["id"])
 
-    # The one thing that decides whether anything is published: what is on
-    # the site now, minus the time it says it was made.
-    changed = "yes"
-    try:
-        with urllib.request.urlopen(LIVE, timeout=30) as answer:
-            live = json.load(answer)
-        if all(live.get(key) == value for key, value in state.items()
-               if key != "generated"):
-            changed = "no"
-    except Exception:
-        pass
-
-    if changed == "yes" and not apps:
+    if not apps:
         # Every repository failing at once is far more likely to be GitHub
         # having a bad minute than every author breaking at once, and an
         # empty catalog would uninstall nothing but would list nothing
         # either. The site that is already up is the better answer.
         print("no app could be derived; leaving the published catalog alone")
         changed = "no"
+    else:
+        # What this run would publish, before a byte of it is fetched or
+        # written: a forced run publishes anyway, because what forced it is a
+        # change to the list or to the code, which the catalog can be
+        # identical through.
+        changed = "yes" if FORCE or unlike(shape(apps, generated), live) else "no"
     if changed == "yes":
+        apps, broken = complete(apps, broken, lines)
         os.makedirs(out, exist_ok=True)
-        write_site(apps, broken, state, out)
+        write_site(apps, broken, shape(apps, generated), out)
 
     for label, why in broken:
         print(f"left out: {label}: {why}")
