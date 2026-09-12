@@ -83,8 +83,8 @@ INSTALLDIR = re.compile(r"PSP/GAME/(?!\.{1,2}$)[A-Za-z0-9_.-]{1,32}")
 # The file's keys, which of them must be there, and the longest each string
 # may be. The caps are the schema's: a name fits the XMB, a summary fits one
 # line of a 480 pixel screen.
-KEYS = ("schema", "name", "summary", "category", "license", "author", "installdir")
-REQUIRED = ("schema", "name", "category", "installdir")
+KEYS = ("schema", "repo", "name", "summary", "category", "license", "author", "installdir")
+REQUIRED = ("schema", "repo", "name", "category", "installdir")
 LIMITS = {"name": 39, "summary": 60, "license": 64, "author": 39}
 
 # The whole archive is held in memory to hash it and read its index. GitHub
@@ -268,6 +268,8 @@ def validate(data):
             raise Problem(f".pspdx: no {key!r}")
     if data["schema"] != PSPDX_SCHEMA:
         raise Problem(f'.pspdx: "schema" must be {PSPDX_SCHEMA}')
+    if not isinstance(data["repo"], str) or not GITHUB.fullmatch(data["repo"]):
+        raise Problem('.pspdx: "repo" must be an HTTPS GitHub repository URL')
     for key, limit in LIMITS.items():
         if key in data:
             value = data[key]
