@@ -3,7 +3,8 @@
 The list of PSP homebrew [PSPDX](https://github.com/chriopter/pspdx) shows
 on the console. View it here: https://chriopter.github.io/pspdx-catalog/
 
-To list an app, add .pspdx and open an issue for . See the example repo [pspdx-demo](https://github.com/chriopter/pspdx-demo) for an example entry.
+To list an app, add a `.pspdx` to its repository and open an issue here.
+See [pspdx-demo](https://github.com/chriopter/pspdx-demo) for an example.
 
 ## Every file here
 
