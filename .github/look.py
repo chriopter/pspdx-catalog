@@ -85,7 +85,7 @@ INSTALLDIR = re.compile(r"PSP/GAME/(?!\.{1,2}$)[A-Za-z0-9_.-]{1,32}")
 # line of a 480 pixel screen.
 KEYS = ("schema", "name", "summary", "category", "license", "author", "installdir")
 REQUIRED = ("schema", "name", "category", "installdir")
-LIMITS = {"name": 39, "summary": 60, "license": 15, "author": 39}
+LIMITS = {"name": 39, "summary": 60, "license": 64, "author": 39}
 
 # The whole archive is held in memory to hash it and read its index. GitHub
 # allows 2 GB assets; a PSP package that size is a mistake.

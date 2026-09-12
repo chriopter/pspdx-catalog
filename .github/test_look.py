@@ -11,6 +11,12 @@ import page
 
 
 class CatalogRegressionTests(unittest.TestCase):
+    def test_spdx_license_with_or_later_suffix(self):
+        spec = {"schema": look.PSPDX_SCHEMA, "name": "Example",
+                "category": "game", "installdir": "PSP/GAME/Example",
+                "license": "GPL-2.0-or-later"}
+        self.assertEqual(look.validate(spec)["license"], "GPL-2.0-or-later")
+
     def test_site_build_survives_truncated_png(self):
         spec = {"schema": look.PSPDX_SCHEMA, "name": "Example",
                 "category": "demo", "installdir": "PSP/GAME/Example"}

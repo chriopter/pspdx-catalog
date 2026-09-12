@@ -5,3 +5,5 @@
 
 https://github.com/chriopter/pspdx-demo
 https://github.com/chriopter/psp-rust-raytracer
+https://github.com/chriopter/psp-graphicsdemo
+https://github.com/chriopter/psp-tuxracer
