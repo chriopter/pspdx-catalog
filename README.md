@@ -1,12 +1,21 @@
-# PSPDX catalog
+# PSPDX catalog builder
 
 The list of PSP homebrew [PSPDX](https://github.com/chriopter/pspdx) shows
-on the console. View it here: https://chriopter.github.io/pspdx-catalog/
+on the console. The website URL is in [`catalog.config.json`](catalog.config.json).
 
 To list an app: a root `.pspdx`, a release with exactly one ZIP containing
 exactly one `EBOOT.PBP`, and an issue here. No drafts or prereleases.
 The `.pspdx` must include `source`, the project's source URL (a GitHub repository in v1).
 See [pspdx-demo](https://github.com/chriopter/pspdx-demo) for an example.
+
+## Make your own catalog
+
+Fork this repository. Change `catalog.config.json` for your catalog's name,
+description, Pages URL and repository links; replace the repositories in
+`repos.txt` with the apps you want to list. Enable GitHub Pages for the fork.
+The workflow reads the same Pages URL to reuse unchanged releases on hourly
+runs. The `.pspdx` and catalog schema URLs stay fixed: they identify the
+shared format, not this particular catalog.
 
 ## Workflow
 
@@ -24,6 +33,7 @@ or a manual run reads everything again. No valid apps: keep the live site.
 
 ## Every file here
 
+- [`catalog.config.json`](catalog.config.json) is the catalog's site identity and live URL.
 - [`repos.txt`](repos.txt) is the list. One repo a line, `@tag` to freeze one at a release.
 - [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) runs it hourly, on a push and on request.
 - [`.github/look.py`](.github/look.py) reads the repos and writes the site.

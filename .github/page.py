@@ -20,6 +20,8 @@ import os
 import struct
 from datetime import datetime, timezone
 
+import config
+
 STYLE = """/* Quiet framing, with the PSP wave kept behind the content. */
 :root { --ink: #e7edf5; --dim: #9baabe; --cyan: #8ec9eb; --rule: #ffffff18; color-scheme: dark; }
 * { box-sizing: border-box; }
@@ -147,15 +149,15 @@ SHELL = """<!doctype html>
 <canvas id="wave" aria-hidden="true"></canvas>
 <div class="wrap">
   <header>
-    <h1><a href="{base}"><b>PSPDX</b> catalog</a></h1>
+    <h1><a href="{base}">{site_name}</a></h1>
     <div class="status">{status}</div>
   </header>
 {body}
   <footer>
     <span>Downloads from the authors’ GitHub releases</span>
-    <span><a href="https://github.com/chriopter/pspdx-catalog">catalog</a>
-      &middot; <a href="https://github.com/chriopter/pspdx">client</a>
-      &middot; <a href="https://github.com/chriopter/pspdx-catalog/issues">issues</a></span>
+    <span><a href="{repository_url}">catalog</a>
+      &middot; <a href="{client_url}">client</a>
+      &middot; <a href="{issues_url}">issues</a></span>
   </footer>
 </div>
 <script src="{base}wave.js"></script>
@@ -273,11 +275,22 @@ def actions(app):
             '</div>')
 
 
-def render(catalog, apps, broken, out):
+def shell(title, base, status, body, settings):
+    """Escape the catalog owner's words before putting them in HTML."""
+    e = html.escape
+    repo = settings["repository_url"].rstrip("/")
+    return SHELL.format(title=e(title), base=base, status=status, body=body,
+                        site_name=e(settings["name"]), repository_url=e(repo, quote=True),
+                        client_url=e(settings["client_url"], quote=True),
+                        issues_url=e(repo + "/issues", quote=True))
+
+
+def render(catalog, apps, broken, out, settings=None):
     """The whole site: the tiles, a directory an app with its page and its
     files, the catalog as a page, and the style and the wave they share.
     Called once, after look.py has written what each app carries, so that
     every file can be measured where it now sits."""
+    settings = settings or config.load()
     e = html.escape
     with open(os.path.join(out, "style.css"), "w", encoding="utf-8") as file:
         file.write(STYLE)
@@ -295,25 +308,24 @@ def render(catalog, apps, broken, out):
         os.makedirs(home, exist_ok=True)
         with open(os.path.join(home, "index.html"), "w",
                   encoding="utf-8") as file:
-            file.write(app_page(app, out))
+            file.write(app_page(app, out, settings))
 
     day = catalog["generated"].split("T")[0]
     count = f"{len(apps)} app" + ("" if len(apps) == 1 else "s")
-    body = f"""  <p class="lede">The PSPDX reference catalog.
-    <a href="https://github.com/chriopter/pspdx-catalog" target="_blank" rel="noopener noreferrer">Copy the catalog builder</a>
+    body = f"""  <p class="lede">{e(settings["description"])}
+    <a href="{e(settings["repository_url"], quote=True)}" target="_blank" rel="noopener noreferrer">Copy the catalog builder</a>
     to publish your own.</p>
   <div class="grid">
 {chr(10).join(tiles)}
   </div>
 {left_out(broken)}"""
     with open(os.path.join(out, "index.html"), "w", encoding="utf-8") as file:
-        file.write(SHELL.format(title="PSPDX catalog", base="./",
-                                status=bar("", count, e(day)), body=body))
+        file.write(shell(settings["name"], "./", bar("", count, e(day)), body, settings))
     with open(os.path.join(out, "catalog.html"), "w", encoding="utf-8") as file:
-        file.write(catalog_page(catalog, count, day))
+        file.write(catalog_page(catalog, count, day, settings))
 
 
-def catalog_page(catalog, count, day):
+def catalog_page(catalog, count, day, settings):
     """The file itself, printed so a person can read it. Nothing here is a
     second source of truth: it is the same object the console is handed,
     walked once more for colour."""
@@ -322,8 +334,8 @@ def catalog_page(catalog, count, day):
 
   <pre class="json">{shine(catalog)}</pre>
 '''
-    return SHELL.format(title="catalog.json - PSPDX catalog", base="./",
-                        status=bar("", count, html.escape(day)), body=body)
+    return shell(f'catalog.json - {settings["name"]}', "./",
+                 bar("", count, html.escape(day)), body, settings)
 
 
 def left_out(broken):
@@ -460,7 +472,7 @@ def entry_block(app):
 """
 
 
-def app_page(app, out):
+def app_page(app, out, settings):
     """One app, as the person who has no console sees it: the icon at the
     size the XMB draws it, the picture out of the EBOOT, where every value
     came from, and the zip."""
@@ -508,7 +520,5 @@ def app_page(app, out):
 {entry_block(app)}
   </details>"""
     body += "</main>"
-    return SHELL.format(
-        title=f'{e(app["name"])} - PSPDX catalog', base=UP,
-        status=bar(UP, f'<a href="{UP}">all apps</a>'),
-        body=body)
+    return shell(f'{app["name"]} - {settings["name"]}', UP,
+                 bar(UP, f'<a href="{UP}">all apps</a>'), body, settings)

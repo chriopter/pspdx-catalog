@@ -47,6 +47,7 @@ import urllib.request
 import zipfile
 from datetime import datetime, timezone
 
+import config
 import page
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -55,7 +56,7 @@ TOKEN = os.environ.get("GITHUB_TOKEN")
 # The catalog that is up now: the memory, and the thing the new one is
 # compared against. Empty, unreachable or FORCE=1 all mean the same thing,
 # which is what the first run does anyway: read everything.
-LIVE = os.environ.get("LIVE", "")
+LIVE = os.environ.get("LIVE", config.load()["catalog_url"])
 FORCE = os.environ.get("FORCE", "") == "1"
 
 # How many repositories are asked at once. A quiet hour is one small API call

@@ -6,11 +6,33 @@ import tempfile
 import unittest
 import zipfile
 
+import config
 import look
 import page
 
 
 class CatalogRegressionTests(unittest.TestCase):
+    def test_catalog_configuration_rebrands_pages_and_drives_live_url(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "catalog.config.json"
+            data = dict(name="Someone's <Catalog>", description="A & B homebrew",
+                        site_url="https://example.github.io/other/",
+                        repository_url="https://github.com/example/other",
+                        client_url="https://github.com/chriopter/pspdx")
+            path.write_text(json.dumps(data))
+            settings = config.load(path)
+            self.assertEqual(settings["catalog_url"],
+                             "https://example.github.io/other/catalog.json")
+            html = page.shell(settings["name"], "./", "", "", settings)
+            self.assertIn("Someone&#x27;s &lt;Catalog&gt;", html)
+            self.assertIn("https://github.com/example/other/issues", html)
+            self.assertNotIn("chriopter/pspdx-catalog", html)
+            self.assertNotIn("<Catalog>", html)
+            data["site_url"] = "http://example.com/"
+            path.write_text(json.dumps(data))
+            with self.assertRaisesRegex(ValueError, "site_url"):
+                config.load(path)
+
     def test_source_is_required_and_must_be_a_github_url(self):
         spec = {"schema": look.PSPDX_SCHEMA, "name": "Example",
                 "category": "demo", "installdir": "PSP/GAME/Example"}
@@ -52,6 +74,16 @@ class CatalogRegressionTests(unittest.TestCase):
             self.assertEqual(json.loads((out / "catalog.json").read_text()), catalog)
             self.assertIn("Example", (out / "index.html").read_text())
             self.assertTrue((out / "apps" / app["id"] / "index.html").is_file())
+            settings = dict(config.load(), name="Other catalog",
+                            description="Another person's apps",
+                            repository_url="https://github.com/example/other")
+            page.render(catalog, [app], [], directory, settings)
+            self.assertIn("<title>Other catalog</title>", (out / "index.html").read_text())
+            self.assertIn("Another person&#x27;s apps", (out / "index.html").read_text())
+            self.assertIn("Example - Other catalog",
+                          (out / "apps" / app["id"] / "index.html").read_text())
+            self.assertIn("catalog.json - Other catalog", (out / "catalog.html").read_text())
+            self.assertEqual(json.loads((out / "catalog.json").read_text()), catalog)
 
     def test_truncated_png_does_not_abort_page_generation(self):
         png = b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR"

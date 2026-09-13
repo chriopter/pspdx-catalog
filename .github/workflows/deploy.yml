@@ -37,7 +37,6 @@ jobs:
         id: look
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          LIVE: https://chriopter.github.io/pspdx-catalog/catalog.json
           # An hourly run trusts the published catalog and skips the apps
           # whose release has not moved. A push or a run started by hand is
           # a change to the list or the code, which no release announces, so
