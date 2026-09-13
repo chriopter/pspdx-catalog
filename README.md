@@ -32,10 +32,12 @@ Otherwise, the builder reads `.pspdx`, downloads and hashes the ZIP, and
 extracts any valid icon, picture, video and sound from its EBOOT. These media
 files are optional.
 
-The workflow deploys every hour, so `generated` in catalog.json is the time of the last successful look; PSPDX warns when it is a day old. A push to `master` or a
-manual run checks everything again, including manifest-only edits. If no app
-is valid, the live site stays up. The published `catalog.json` is also the
-builder's record of the previous releases.
+The workflow deploys every hour, so `generated_at` in `catalog.json` is the
+time of the last publication; PSPDX warns when it is a day old. A push to
+`master` or a manual run checks everything again, including manifest-only
+edits. If no app is valid, the live site stays up. Individual failed apps are
+left out, so a fresh timestamp does not guarantee every app was checked.
+The published `catalog.json` is also the builder's record of previous releases.
 
 ## Files
 

@@ -265,10 +265,10 @@ def actions(app):
                 'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" '
                 'aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></svg>')
     return (f'<div class="actions">'
-            f'<a class="get" href="{e(app["repo"])}" target="_blank" '
+            f'<a class="get" href="{e(app["source"])}" target="_blank" '
             f'rel="noopener noreferrer" title="GitHub (new tab)" '
             f'aria-label="{e(app["name"])} on GitHub (new tab)">{github}</a>'
-            f'<a class="get" href="{e(app["release"]["url"])}" target="_blank" '
+            f'<a class="get" href="{e(app["release"]["download"]["url"])}" target="_blank" '
             f'rel="noopener noreferrer" title="Download (new tab)" '
             f'aria-label="Download {e(app["name"])} (new tab)">{download}</a>'
             '</div>')
@@ -297,8 +297,8 @@ def render(catalog, apps, broken, out, settings=None):
 
     tiles = []
     for app in apps:
-        art = (f'<img src="{e(app["icon"])}" alt="" width="144" height="80" '
-               f'loading="lazy">' if "icon" in app
+        art = (f'<img src="{e(app["media"]["icon"])}" alt="" width="144" height="80" '
+               f'loading="lazy">' if "icon" in app.get("media", {})
                else '<div class="noicon">no icon</div>')
         tiles.append(TILE.format(art=art, id=e(app["id"]), name=e(app["name"]),
                                  author=e(app["author"]), actions=actions(app)))
@@ -308,7 +308,7 @@ def render(catalog, apps, broken, out, settings=None):
                   encoding="utf-8") as file:
             file.write(app_page(app, out, settings))
 
-    day = catalog["generated"].split("T")[0]
+    day = catalog["generated_at"].split("T")[0]
     count = f"{len(apps)} app" + ("" if len(apps) == 1 else "s")
     body = f"""  <p class="lede">{e(settings["description"])}
     <a href="{e(settings["repository_url"], quote=True)}" target="_blank" rel="noopener noreferrer">Copy the catalog builder</a>
@@ -362,7 +362,7 @@ def left_out(broken):
 def beside(app, field):
     """A file of this app as its own page addresses it: they sit in the same
     directory, so the name is the whole link."""
-    return app[field].rsplit("/", 1)[-1]
+    return app["media"][field].rsplit("/", 1)[-1]
 
 
 def pixels(path):
@@ -419,19 +419,19 @@ def origins(app, out):
             value += ' <span class="note">github</span>'
         said.append((what, value))
 
-    day = datetime.fromtimestamp(release["rev"],
-                                 timezone.utc).strftime("%Y-%m-%d")
+    day = release["published_at"].split("T")[0]
+    download = release["download"]
     published = [
-        ("version", e(release["version"])),
-        ("published", f'{day} <span class="note">rev {release["rev"]}</span>'),
-        ("package", f'<a href="{e(release["url"])}">'
-                    f'{e(release["url"].rsplit("/", 1)[-1])}</a> '
-                    f'<span class="note">{size(release["size"])}</span>'),
-        ("sha256", e(release["sha256"])),
+        ("tag", e(release["tag"])),
+        ("published", e(day)),
+        ("package", f'<a href="{e(download["url"])}">'
+                    f'{e(download["url"].rsplit("/", 1)[-1])}</a> '
+                    f'<span class="note">{size(download["size"])}</span>'),
+        ("sha256", e(download["sha256"])),
         ("release", f'<a href="{e(app["_page"])}">'
                     f'{e(app["_page"].rsplit("/", 1)[-1])}</a>'),
-        ("repository", f'<a href="{e(app["repo"])}">'
-                       f'{e(app["repo"].split("github.com/")[-1])}</a>'),
+        ("repository", f'<a href="{e(app["source"])}">'
+                       f'{e(app["source"].split("github.com/")[-1])}</a>'),
     ]
 
     # A file the EBOOT did not carry is a row saying absent rather than no row
@@ -439,14 +439,14 @@ def origins(app, out):
     # look the same to a reader otherwise.
     carried = []
     for field, what, called in ARTEFACTS:
-        if field in app:
+        if field in app.get("media", {}):
             here = beside(app, field)
             told = f'<a href="{e(here)}">{called}</a>'
-            shape = pixels(os.path.join(out, *app[field].split("/")))
+            shape = pixels(os.path.join(out, *app["media"][field].split("/")))
             if shape:
                 told += f' <span class="note">{shape}</span>'
             told += (' <span class="note">'
-                     + size(os.path.getsize(os.path.join(out, *app[field].split("/"))))
+                     + size(os.path.getsize(os.path.join(out, *app["media"][field].split("/"))))
                      + "</span>")
         else:
             told = f'{called} <span class="gone">absent</span>'
@@ -477,24 +477,24 @@ def app_page(app, out, settings):
     e = html.escape
     release = app["release"]
     icon = (f'<img src="{e(beside(app, "icon"))}" alt="" width="144" height="80">'
-            if "icon" in app else "")
+            if "icon" in app.get("media", {}) else "")
     about = " &middot; ".join(x for x in (f'by {e(app["author"])}',
                                           e(app["category"]),
                                           e(app["license"])) if x)
 
     shots = ""
-    if "screenshot" in app:
+    if "screenshot" in app.get("media", {}):
         shots = (f'\n  <div class="shots">\n'
                  f'    <img src="{e(beside(app, "screenshot"))}" '
                  f'alt="{e(app["name"])} running" loading="lazy">\n  </div>\n')
 
     manifest, published, media = origins(app, out)
-    day = datetime.fromtimestamp(release["rev"], timezone.utc).strftime("%d %b %Y")
+    day = datetime.fromisoformat(release["published_at"].replace("Z", "+00:00")).strftime("%d %b %Y")
     latest = section("Latest release", [
         ("Version", f'<a href="{e(app["_page"])}" target="_blank" '
-                    f'rel="noopener noreferrer">{e(release["version"])}</a>'),
+                    f'rel="noopener noreferrer">{e(release["tag"])}</a>'),
         ("Updated", day),
-        ("Download", size(release["size"])),
+        ("Download", size(release["download"]["size"])),
         ("Installs to", e(app["installdir"])),
     ])
     body = f"""  <main class="detail">

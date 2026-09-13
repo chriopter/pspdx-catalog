@@ -2,7 +2,7 @@
 # the EBOOT in it, and publish the catalog, the pictures and the page. What
 # is already published is the only memory this repository keeps: apps whose
 # release has not moved are taken from it rather than read again. The site
-# is published every hour all the same, so its generated stamp is the time
+# is published every hour all the same, so its generated_at stamp is the time
 # of the last successful look and a console can tell a list nobody looks
 # after from one that had no news.
 name: Deploy

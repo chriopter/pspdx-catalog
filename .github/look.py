@@ -12,11 +12,10 @@ whoever lands on the site.
     GITHUB_TOKEN=<token>       raises the rate limit; a run needs one
 
 There is no state in this repository. The published `catalog.json` is the
-memory: a repository whose release is the one already in it is copied out of
-it and nothing of that app is fetched, and a run that ends with the same
-catalog publishes nothing, which is most hours. That is the whole saving,
-and it is the only reason this can run hourly over a list with a 44 MB port
-on it.
+memory: a repository whose release is the one already in it reuses its entry
+and published media. The site is still published every hour, so generated_at
+records the latest snapshot rather than the latest changed release. Reuse
+makes hourly runs feasible even with large release ZIPs.
 
 What it costs is one thing: an author who edits their `.pspdx` and publishes
 no release is not noticed until they do. That is accepted, and `FORCE=1`
@@ -323,6 +322,13 @@ def read_pspdx(owner, repo, ref):
     return validate(data), raw
 
 
+def check_source(spec, owner, repo):
+    """The manifest must lead back to the repository the list names."""
+    source_owner, source_repo = GITHUB.fullmatch(spec["source"]).groups()
+    if (source_owner.lower(), source_repo.lower()) != (owner.lower(), repo.lower()):
+        raise Problem(f'.pspdx: "source" must point to https://github.com/{owner}/{repo}')
+
+
 # --- the package ------------------------------------------------------------
 
 def eboot(archive):
@@ -463,16 +469,14 @@ def pictures(sections):
 
 def again(known, ref, owner, repo, release):
     """The entry out of the published catalog, word for word, and no media
-    yet: whether this run publishes at all is not known while the list is
-    being walked, and an hour that publishes nothing should cost nothing.
-    `complete` fetches the files afterwards, for the runs that do.
+    yet: `complete` fetches the published files after the list is walked.
 
     Nothing here is derived a second time: the release is the one that was
     read the day this entry was written, so re-reading the .pspdx and the zip
-    could only produce the same object at the cost of the whole download."""
+    would cost another ZIP download; manifest-only edits await a forced run."""
     app = dict(known)
     app["_pspdx"] = raw_url(owner, repo, ref, ".pspdx")
-    app["_page"] = release.get("html_url", app["repo"] + "/releases")
+    app["_page"] = release.get("html_url", app["source"] + "/releases")
     # No `_said`: which fields the author wrote and which fell back to GitHub
     # is in the .pspdx, which was not read. The page shows no origin for them
     # rather than guessing at one.
@@ -489,11 +493,11 @@ def served(known):
         raise Problem("no published catalog to copy the files from")
     media = {}
     for field, (_, cap) in MEDIA.items():
-        if field not in known:
+        if field not in known.get("media", {}):
             continue
-        where = urllib.parse.urljoin(LIVE, known[field])
+        where = urllib.parse.urljoin(LIVE, known["media"][field])
         data = fetch(where, cap, f"the published {field}")
-        suffix = os.path.splitext(known[field])[1]
+        suffix = os.path.splitext(known["media"][field])[1]
         if suffix not in MAGIC or not data.startswith(MAGIC[suffix]):
             raise Problem(f"the published {field} is not a {suffix} file")
         media[field] = (suffix, data)
@@ -527,17 +531,22 @@ def entry(url, owner, repo, tag, known):
             release["published_at"].replace("Z", "+00:00"))
     except (KeyError, TypeError, ValueError, AttributeError):
         raise Problem("the release has no published_at") from None
-    version = release["tag_name"].removeprefix("v")
-    rev = int(published.timestamp())
+    tag = release["tag_name"]
+    if not isinstance(tag, str) or not tag or tag == "v" or len(tag) > 31:
+        raise Problem("release tag must be 1 to 31 characters and not just v")
+    if not 0 < published.timestamp() < 2**32:
+        raise Problem("release publication time is outside the PSPDX v1 range")
+    published_at = published.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     # The same version published at the same second is the same release, and
     # the same release is the same package: what the catalog says about it
     # cannot have changed without the author publishing again.
     was = (known or {}).get("release", {})
-    if known and was.get("version") == version and was.get("rev") == rev:
-        return again(known, ref, owner, repo, release), [f"unchanged, {version}"]
+    if known and was.get("tag") == tag and was.get("published_at") == published_at:
+        return again(known, ref, owner, repo, release), [f"unchanged, {tag}"]
 
     spec, raw = read_pspdx(owner, repo, ref)
+    check_source(spec, owner, repo)
     meta = api(f"/repos/{owner}/{repo}", "repository")
     if not isinstance(meta, dict):
         raise Problem("GitHub answered with something other than a repository")
@@ -577,14 +586,16 @@ def entry(url, owner, repo, tag, known):
         "summary": spec.get("summary", trim(meta.get("description") or "")),
         "category": spec["category"],
         "license": spec.get("license", spdx),
-        "repo": url,
+        "source": url,
         "installdir": spec["installdir"],
         "release": {
-            "rev": rev,
-            "url": asset["browser_download_url"],
-            "sha256": sha,
-            "size": asset["size"],
-            "version": version,
+            "tag": tag,
+            "published_at": published_at,
+            "download": {
+                "url": asset["browser_download_url"],
+                "sha256": sha,
+                "size": asset["size"],
+            },
         },
         "_media": media,
         "_raw": raw,
@@ -598,7 +609,7 @@ def entry(url, owner, repo, tag, known):
         "_said": sorted(spec),
         "_page": release.get("html_url", url + "/releases"),
     }
-    log.append(f"{app['id']} {version}: {app['name']!r}, "
+    log.append(f"{app['id']} {tag}: {app['name']!r}, "
                + (", ".join(sorted(media)) or "nothing in the PBP"))
     return app, log
 
@@ -615,16 +626,16 @@ def shape(apps, generated):
     land on the same name, which is why an entry copied out of the published
     catalog keeps the paths it already has.
 
-    Nothing is written here, because this is also what the run compares
-    against the published catalog before deciding to write anything at all."""
+    Nothing is written here; the run compares the shape to the live catalog
+    only to report whether app data moved."""
     for app in apps:
         for field, (suffix, data) in app.get("_media", {}).items():
             called, _ = MEDIA[field]
-            app[field] = (f"{APPS}/{app['id']}/"
-                          f"{called}-{sha256(data)[:8]}{suffix}")
+            app.setdefault("media", {})[field] = (f"{APPS}/{app['id']}/"
+                                                  f"{called}-{sha256(data)[:8]}{suffix}")
     return {
         "schema": SCHEMA,
-        "generated": generated,
+        "generated_at": generated,
         "apps": [{k: v for k, v in app.items() if not k.startswith("_")}
                  for app in apps],
     }
@@ -638,7 +649,7 @@ def write_site(apps, broken, catalog, out):
         home = os.path.join(out, APPS, app["id"])
         os.makedirs(home, exist_ok=True)
         for field, (_, data) in app.pop("_media", {}).items():
-            with open(os.path.join(out, *app[field].split("/")), "wb") as file:
+            with open(os.path.join(out, *app["media"][field].split("/")), "wb") as file:
                 file.write(data)
         with open(os.path.join(home, READ), "wb") as file:
             file.write(app.pop("_raw"))
@@ -653,7 +664,7 @@ def write_site(apps, broken, catalog, out):
     # they have just been written.
     page.render(catalog, apps, broken, out)
 
-    have = ", ".join(f"{sum(field in app for app in apps)} {field}s"
+    have = ", ".join(f"{sum(field in app.get('media', {}) for app in apps)} {field}s"
                      for field in MEDIA)
     print(f"{len(apps)} app{'' if len(apps) == 1 else 's'}, {have}, "
           f"{len(text)} bytes -> " + os.path.join(out, "catalog.json"))
@@ -687,8 +698,8 @@ def unlike(catalog, live):
     found the same releases are the same catalog."""
     if live is None:
         return True
-    return ({k: v for k, v in catalog.items() if k != "generated"}
-            != {k: v for k, v in live.items() if k != "generated"})
+    return ({k: v for k, v in catalog.items() if k != "generated_at"}
+            != {k: v for k, v in live.items() if k != "generated_at"})
 
 
 def walk(lines, known):
@@ -791,7 +802,7 @@ def main(argv):
         changed = "no"
     else:
         # Published every run, even when nothing about the apps moved: the
-        # generated stamp is then the time of the last successful look, and
+        # generated_at is then the time of this publication, and
         # a console can tell a list nobody looks after -- a stamp a day old
         # -- from one that simply had no news. What moved is still said.
         moved = FORCE or unlike(shape(apps, generated), live)

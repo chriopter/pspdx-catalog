@@ -44,6 +44,15 @@ class CatalogRegressionTests(unittest.TestCase):
                 look.validate(dict(spec, source=repo))
         look.validate(dict(spec, source="https://github.com/example/demo"))
 
+    def test_manifest_source_must_match_listed_repository(self):
+        spec = {"source": "https://github.com/example/demo"}
+        look.check_source(spec, "example", "demo")
+        look.check_source(spec, "Example", "Demo")
+        for owner, repo in (("other", "demo"), ("example", "other")):
+            with self.subTest(owner=owner, repo=repo), self.assertRaisesRegex(
+                    look.Problem, '"source" must point to'):
+                look.check_source(spec, owner, repo)
+
     def test_spdx_license_with_or_later_suffix(self):
         spec = {"schema": look.PSPDX_SCHEMA, "name": "Example",
                 "source": "https://github.com/example/demo",
@@ -59,10 +68,10 @@ class CatalogRegressionTests(unittest.TestCase):
             "ICON0.PNG": b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"})
         app = dict(spec, id="io.github.example.demo", author="example",
                    summary="Example", license="MIT",
-                   repo="https://github.com/example/demo",
-                   release={"version": "1.0", "rev": 1, "size": 123,
-                            "sha256": "0" * 64,
-                            "url": "https://github.com/example/demo/releases/download/v1/demo.zip"},
+                   source="https://github.com/example/demo",
+                   release={"tag": "v1.0", "published_at": "2026-09-12T00:00:00Z",
+                            "download": {"size": 123, "sha256": "0" * 64,
+                                         "url": "https://github.com/example/demo/releases/download/v1/demo.zip"}},
                    _media=media, _raw=json.dumps(spec).encode(),
                    _pspdx="https://github.com/example/demo/blob/master/.pspdx",
                    _page="https://github.com/example/demo/releases/tag/v1")
@@ -72,6 +81,8 @@ class CatalogRegressionTests(unittest.TestCase):
             out = pathlib.Path(directory)
             self.assertEqual(json.loads((out / "catalog.json").read_text()), catalog)
             self.assertIn("Example", (out / "index.html").read_text())
+            self.assertIn("generated_at", (out / "catalog.json").read_text())
+            self.assertIn("media", catalog["apps"][0])
             self.assertTrue((out / "apps" / app["id"] / "index.html").is_file())
             settings = dict(config.load(), name="Other catalog",
                             description="Another person's apps",
