@@ -17,8 +17,7 @@ class CatalogRegressionTests(unittest.TestCase):
             path = pathlib.Path(directory) / "catalog.config.json"
             data = dict(name="Someone's <Catalog>", description="A & B homebrew",
                         site_url="https://example.github.io/other/",
-                        repository_url="https://github.com/example/other",
-                        client_url="https://github.com/chriopter/pspdx")
+                        repository_url="https://github.com/example/other")
             path.write_text(json.dumps(data))
             settings = config.load(path)
             self.assertEqual(settings["catalog_url"],

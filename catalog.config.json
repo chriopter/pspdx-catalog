@@ -2,6 +2,5 @@
   "name": "PSPDX catalog",
   "description": "The PSPDX reference catalog.",
   "site_url": "https://chriopter.github.io/pspdx-catalog/",
-  "repository_url": "https://github.com/chriopter/pspdx-catalog",
-  "client_url": "https://github.com/chriopter/pspdx"
+  "repository_url": "https://github.com/chriopter/pspdx-catalog"
 }

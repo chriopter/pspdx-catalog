@@ -156,7 +156,6 @@ SHELL = """<!doctype html>
   <footer>
     <span>Downloads from the authors’ GitHub releases</span>
     <span><a href="{repository_url}">catalog</a>
-      &middot; <a href="{client_url}">client</a>
       &middot; <a href="{issues_url}">issues</a></span>
   </footer>
 </div>
@@ -281,7 +280,6 @@ def shell(title, base, status, body, settings):
     repo = settings["repository_url"].rstrip("/")
     return SHELL.format(title=e(title), base=base, status=status, body=body,
                         site_name=e(settings["name"]), repository_url=e(repo, quote=True),
-                        client_url=e(settings["client_url"], quote=True),
                         issues_url=e(repo + "/issues", quote=True))
 
 

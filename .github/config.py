@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FILE = os.path.join(ROOT, "catalog.config.json")
-FIELDS = {"name", "description", "site_url", "repository_url", "client_url"}
+FIELDS = {"name", "description", "site_url", "repository_url"}
 
 
 def load(path=FILE):
@@ -18,7 +18,7 @@ def load(path=FILE):
             raise ValueError(f"{path}: {key} must be a nonempty string without surrounding spaces")
     if len(data["name"]) > 80 or len(data["description"]) > 240:
         raise ValueError(f"{path}: name or description is too long")
-    for key in ("site_url", "repository_url", "client_url"):
+    for key in ("site_url", "repository_url"):
         value = data[key]
         parsed = urlparse(value)
         if (len(value) > 300 or parsed.scheme != "https" or not parsed.hostname
