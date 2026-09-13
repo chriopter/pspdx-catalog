@@ -1,5 +1,7 @@
 # PSPDX catalog builder
 
+**[Browse the catalog →](https://chriopter.github.io/pspdx-catalog/)**
+
 The list of PSP homebrew [PSPDX](https://github.com/chriopter/pspdx) shows
 on the console. The website URL is in [`catalog.config.json`](catalog.config.json).
 
