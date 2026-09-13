@@ -47,6 +47,9 @@ The published `catalog.json` is also the builder's record of previous releases.
 - [`.github/look.py`](.github/look.py) — reads releases and builds the catalog.
 - [`.github/page.py`](.github/page.py) — renders the website.
 
-The generated site contains `catalog.json`, a readable `catalog.html`, an
-`index.html` for browsing, and a page plus available EBOOT media for each app.
+The generated site contains `catalog.json` and `catalog.txt` (a copy of
+`repos.txt`). A client can use the site URL as one source: read the JSON for
+fast browsing, or the text list for direct repository checks if JSON fails.
+It also contains a readable `catalog.html`, an `index.html` for browsing,
+and a page plus available EBOOT media for each app.
 The JSON format is defined by the [catalog schema](https://github.com/chriopter/pspdx/blob/master/schema/catalog-v1.json).

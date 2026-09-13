@@ -641,7 +641,7 @@ def shape(apps, generated):
     }
 
 
-def write_site(apps, broken, catalog, out):
+def write_site(apps, broken, catalog, out, listing=None):
     # Whatever a previous run left here is not evidence that any of it is
     # still in anybody's EBOOT, or that the app is still on the list.
     shutil.rmtree(os.path.join(out, APPS), ignore_errors=True)
@@ -658,6 +658,8 @@ def write_site(apps, broken, catalog, out):
     text = json.dumps(catalog, ensure_ascii=False, separators=(",", ":"))
     with open(os.path.join(out, "catalog.json"), "w", encoding="utf-8") as file:
         file.write(text + "\n")
+    shutil.copyfile(listing or os.path.join(HERE, "repos.txt"),
+                    os.path.join(out, "catalog.txt"))
     # The site is more than one file now: the tiles, a page an app, and the
     # style and the wave they share, so the pages write themselves. It comes
     # after the pictures because a page measures the film and the sound where
@@ -811,7 +813,7 @@ def main(argv):
     if changed == "yes":
         apps, broken = complete(apps, broken, lines)
         os.makedirs(out, exist_ok=True)
-        write_site(apps, broken, shape(apps, generated), out)
+        write_site(apps, broken, shape(apps, generated), out, listing)
 
     for label, why in broken:
         print(f"left out: {label}: {why}")

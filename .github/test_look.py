@@ -80,6 +80,8 @@ class CatalogRegressionTests(unittest.TestCase):
             look.write_site([app], [], catalog, directory)
             out = pathlib.Path(directory)
             self.assertEqual(json.loads((out / "catalog.json").read_text()), catalog)
+            self.assertEqual((out / "catalog.txt").read_text(),
+                             (pathlib.Path(look.HERE) / "repos.txt").read_text())
             self.assertIn("Example", (out / "index.html").read_text())
             self.assertIn("generated_at", (out / "catalog.json").read_text())
             self.assertIn("media", catalog["apps"][0])
