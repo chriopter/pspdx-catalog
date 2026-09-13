@@ -1,7 +1,10 @@
 # Every hour: read every repository on the list, its .pspdx, its release and
 # the EBOOT in it, and publish the catalog, the pictures and the page. What
-# is already published is the only memory this repository keeps, so the run
-# compares the two and stops when they are the same, which is most hours.
+# is already published is the only memory this repository keeps: apps whose
+# release has not moved are taken from it rather than read again. The site
+# is published every hour all the same, so its generated stamp is the time
+# of the last successful look and a console can tell a list nobody looks
+# after from one that had no news.
 name: Deploy
 
 on:

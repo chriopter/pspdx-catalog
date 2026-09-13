@@ -790,11 +790,13 @@ def main(argv):
         print("no app could be derived; leaving the published catalog alone")
         changed = "no"
     else:
-        # What this run would publish, before a byte of it is fetched or
-        # written: a forced run publishes anyway, because what forced it is a
-        # change to the list or to the code, which the catalog can be
-        # identical through.
-        changed = "yes" if FORCE or unlike(shape(apps, generated), live) else "no"
+        # Published every run, even when nothing about the apps moved: the
+        # generated stamp is then the time of the last successful look, and
+        # a console can tell a list nobody looks after -- a stamp a day old
+        # -- from one that simply had no news. What moved is still said.
+        moved = FORCE or unlike(shape(apps, generated), live)
+        print("apps changed:", "yes" if moved else "no")
+        changed = "yes"
     if changed == "yes":
         apps, broken = complete(apps, broken, lines)
         os.makedirs(out, exist_ok=True)
