@@ -74,21 +74,56 @@ PSPDX_SCHEMA = "https://chriopter.github.io/pspdx/schema/pspdx-v1.json"
 
 GITHUB = re.compile(r"https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?/?$")
 
-# The rules out of schema/pspdx-v1.json, by hand. The category is one word for
-# what this one app is, and the install directory is matched whole, because
-# the schema's `$` is the end of the string and Python's is not quite. The
-# folder is not . or .., and not .pspdx-stage in any case: the client unpacks
-# every install there first, and the stick does not tell the cases apart.
-# test_schema_drift.py holds these to the schema, case by case.
-CATEGORIES = ("game", "emulator", "app", "plugin", "demo")
+# The rules out of schema/pspdx-v1.json, by hand. The install directory is
+# matched whole, because the schema's `$` is the end of the string and
+# Python's is not quite. The folder is not . or .., and not .pspdx-stage in
+# any case: the client unpacks every install there first, and the stick does
+# not tell the cases apart. test_schema_drift.py holds these to the schema,
+# case by case.
 INSTALLDIR = re.compile(r"PSP/GAME/(?!(?:\.{1,2}|(?i:\.pspdx-stage))$)[A-Za-z0-9_.-]{1,32}")
+
+# What a file can be. A homebrew is an EBOOT under PSP/GAME and is the one
+# this catalog can check; the other two need other checks than a release with
+# an EBOOT in it, and a file that says it is one of them is not wrong, only
+# early. A file that says nothing is a homebrew.
+TYPES = ("homebrew", "plugin", "iso")
+HOMEBREW = "homebrew"
 
 # The file's keys, which of them must be there, and the longest each string
 # may be. The caps are the schema's: a name fits the XMB, a summary fits one
-# line of a 480 pixel screen.
-KEYS = ("schema", "source", "name", "summary", "category", "license", "author", "installdir")
-REQUIRED = ("schema", "source", "name", "category", "installdir")
-LIMITS = {"name": 39, "summary": 60, "license": 64, "author": 39}
+# line of a 480 pixel screen, and a list's address fits the URL slot the
+# console has for every other address.
+KEYS = ("schema", "source", "name", "type", "tags", "installdir", "summary",
+        "author", "license", "description", "listed_by")
+REQUIRED = ("schema", "source", "name")
+LIMITS = {"source": 255, "name": 40, "summary": 60, "author": 60, "license": 60,
+          "description": 2500, "listed_by": 255}
+
+# Tags say what an app is in as many words as it takes, up to eight, each a
+# word or two long; the console makes a tab of the ones it knows.
+TAGS, TAG = 8, 24
+
+# No string holds a control character: each of them lands on one line of a
+# screen or a page, where a tab or a carriage return is a hole in the layout
+# nobody can see in the file. The description is the one text of several
+# lines, and a newline is how it says so; the rest of the controls stay out
+# of it too.
+CONTROL = re.compile(r"[\x00-\x1f]")
+PARAGRAPHS = re.compile(r"[\x00-\x09\x0b-\x1f]")
+
+# How many releases an entry carries, newest first. The console installs and
+# compares the first; the rest are the history a page or another client can
+# show. Every one of them is a zip downloaded once to be hashed, and after
+# that its hash is copied forward from the published catalog, so the cost is
+# the first run and then one zip a new release.
+RELEASES = 20
+
+# GitHub lists this many releases a page; drafts and pre-releases come out of
+# them before the newest twenty are taken.
+RELEASE_PAGE = 30
+
+# A changelog is the release's own notes, as plain text this long at most.
+CHANGELOG = 2500
 
 # The whole archive is held in memory to hash it and read its index. GitHub
 # allows 2 GB assets; a PSP package that size is a mistake.
@@ -144,6 +179,38 @@ def ident(owner, repo):
     name are [a-z0-9] here."""
     return "io.github." + ".".join(re.sub(r"[^a-z0-9]", "", part.lower())
                                    for part in (owner, repo))
+
+
+def plain(text):
+    """One part of an id: the letters and digits of text, in lower case. The
+    ASCII ones only, stripped before the case is changed, so that a letter
+    whose lower case happens to be ASCII does not slip in here and not on the
+    console."""
+    return re.sub(r"[^A-Za-z0-9]", "", text).lower()
+
+
+def identity(spec):
+    """The id of the app a valid .pspdx describes, or None when it cannot
+    have one. A GitHub repository is io.github.<owner>.<repo>, which is what
+    every id already published is. Anywhere else the address says too little
+    about which project it is -- a mirror moves, and one page lists many --
+    so the id is the list that vouches for the app and the app's name: the
+    host of listed_by backwards, as a reverse domain name is written, without
+    the www. nobody means, and the name after it."""
+    found = GITHUB.fullmatch(spec["source"])
+    if found:
+        return ident(*found.groups())
+    where = spec.get("listed_by", "")
+    if not where.startswith("https://"):
+        return None
+    host = re.split(r"[/?#]", where[len("https://"):], maxsplit=1)[0]
+    # Who logs in and on which port are not part of the name.
+    host = host.rsplit("@", 1)[-1].split(":", 1)[0]
+    if host[:4].lower() == "www.":
+        host = host[4:]
+    labels = [label for label in map(plain, host.split(".")[::-1]) if label]
+    name = plain(spec["name"])
+    return ".".join(labels + [name]) if labels and name else None
 
 
 def trim(text, limit=LIMITS["summary"]):
@@ -280,8 +347,6 @@ def validate(data):
             raise Problem(f".pspdx: no {key!r}")
     if data["schema"] != PSPDX_SCHEMA:
         raise Problem(f'.pspdx: "schema" must be {PSPDX_SCHEMA}')
-    if not isinstance(data["source"], str) or not GITHUB.fullmatch(data["source"]):
-        raise Problem('.pspdx: "source" must be an HTTPS GitHub repository URL')
     for key, limit in LIMITS.items():
         if key in data:
             value = data[key]
@@ -290,15 +355,76 @@ def validate(data):
             if len(value) > limit:
                 raise Problem(f".pspdx: {key!r} is {len(value)} characters, "
                               f"at most {limit}")
+            if (PARAGRAPHS if key == "description" else CONTROL).search(value):
+                raise Problem(f".pspdx: {key!r} holds a control character"
+                              + ("; a newline is the only one it may"
+                                 if key == "description" else ""))
+    # Any https:// address may be where a project lives: a mirror of
+    # something abandoned is rarely on GitHub. One on github.com is held to
+    # being a repository, because that is what the id, the default folder
+    # and the releases are read out of.
+    source = data["source"]
+    if not source.startswith("https://") or source == "https://":
+        raise Problem('.pspdx: "source" must be an https:// URL')
+    if source.startswith("https://github.com/") and not GITHUB.fullmatch(source):
+        raise Problem('.pspdx: "source" on github.com must be a repository URL, '
+                      "https://github.com/<owner>/<repository>")
     if not data["name"]:
         raise Problem('.pspdx: "name" is empty')
-    if data["category"] not in CATEGORIES:
-        raise Problem('.pspdx: "category" is one of ' + ", ".join(CATEGORIES))
-    if not isinstance(data["installdir"], str) \
-            or not INSTALLDIR.fullmatch(data["installdir"]):
-        raise Problem('.pspdx: "installdir" is PSP/GAME/ and 1 to 32 of '
-                      "[A-Za-z0-9_.-], excluding ., .. and .pspdx-stage, in version 1")
+    if "tags" in data:
+        tags = data["tags"]
+        if not isinstance(tags, list) or len(tags) > TAGS:
+            raise Problem(f'.pspdx: "tags" is a list of at most {TAGS} words')
+        for tag in tags:
+            if not isinstance(tag, str) or not 1 <= len(tag) <= TAG or CONTROL.search(tag):
+                raise Problem(f'.pspdx: a tag is 1 to {TAG} characters and no control '
+                              f"character, not {tag!r}")
+        if len(set(tags)) != len(tags):
+            raise Problem('.pspdx: "tags" names a word twice')
+    kind = data.get("type", HOMEBREW)
+    if kind not in TYPES:
+        raise Problem('.pspdx: "type" is one of ' + ", ".join(TYPES))
+    if "listed_by" in data and (not data["listed_by"].startswith("https://")
+                                or data["listed_by"] == "https://"):
+        raise Problem('.pspdx: "listed_by" must be an https:// URL')
+    # Outside GitHub the id is the vouching list's host and the name, so a
+    # file without either has no id and describes no app anyone could find.
+    if not GITHUB.fullmatch(source):
+        if "listed_by" not in data:
+            raise Problem('.pspdx: a "source" outside GitHub needs "listed_by", '
+                          "whose host and the name make the id")
+        if not plain(data["name"]):
+            raise Problem('.pspdx: "name" has no letter or digit to make an id of')
+        if identity(data) is None:
+            raise Problem('.pspdx: "listed_by" has no host to make an id of')
+    if "installdir" in data:
+        if kind != HOMEBREW:
+            raise Problem(f'.pspdx: "installdir" is only for type homebrew, not {kind}')
+        if not isinstance(data["installdir"], str) \
+                or not INSTALLDIR.fullmatch(data["installdir"]):
+            raise Problem('.pspdx: "installdir" is PSP/GAME/ and 1 to 32 of '
+                          "[A-Za-z0-9_.-], excluding ., .. and .pspdx-stage, in version 1")
+    elif kind == HOMEBREW:
+        installdir(data)
     return data
+
+
+def installdir(spec):
+    """Where a homebrew goes on the stick: what its file says, or else a
+    folder under PSP/GAME named after it and cut to the 32 characters a folder
+    may have -- the repository's name from GitHub, which is spelt in the
+    characters a folder holds already, and the app's name from anywhere else,
+    with every other character left out. A name that comes out empty, or as
+    ., .. or .pspdx-stage, has no folder it could go to, and the file then
+    has to say one."""
+    if "installdir" in spec:
+        return spec["installdir"]
+    found = GITHUB.fullmatch(spec["source"])
+    name = found.group(2) if found else re.sub(r"[^A-Za-z0-9_.-]", "", spec["name"])
+    folder = "PSP/GAME/" + name[:32]
+    if not INSTALLDIR.fullmatch(folder):
+        raise Problem(f'.pspdx: no "installdir", and {folder} cannot be one')
+    return folder
 
 
 def read_pspdx(owner, repo, ref):
@@ -327,7 +453,13 @@ def read_pspdx(owner, repo, ref):
 
 def check_source(spec, owner, repo):
     """The manifest must lead back to the repository the list names."""
-    source_owner, source_repo = GITHUB.fullmatch(spec["source"]).groups()
+    found = GITHUB.fullmatch(spec["source"])
+    # A file whose project lives elsewhere is a valid file, but this builder
+    # reads releases and EBOOTs out of GitHub and has nothing to read there.
+    if not found:
+        raise Problem("non-GitHub source: only a catalog can list it, "
+                      "not supported by this builder yet")
+    source_owner, source_repo = found.groups()
     if (source_owner.lower(), source_repo.lower()) != (owner.lower(), repo.lower()):
         raise Problem(f'.pspdx: "source" must point to https://github.com/{owner}/{repo}')
 
@@ -444,7 +576,18 @@ def package(asset, log):
     if sfo.get("CATEGORY") != "MG":
         raise Problem("the EBOOT's PARAM.SFO says CATEGORY "
                       f"{sfo.get('CATEGORY', '')!r}, not 'MG'")
-    return sha256(raw), root, sfo, sections
+    return sha256(raw), root, sfo, sections, eboot_md5(archive, name)
+
+
+def eboot_md5(archive, name):
+    """The MD5 of the EBOOT.PBP as the install will put it on the stick, read
+    out of the zip already in memory: a console holding an EBOOT and no
+    record of it can then tell which release it is."""
+    digest = hashlib.md5()
+    with archive.open(name) as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def pictures(sections):
@@ -496,11 +639,12 @@ def served(known):
         raise Problem("no published catalog to copy the files from")
     media = {}
     for field, (_, cap) in MEDIA.items():
-        if field not in known.get("media", {}):
+        path = page.media_path(known, field)
+        if not path:
             continue
-        where = urllib.parse.urljoin(LIVE, known["media"][field])
+        where = urllib.parse.urljoin(LIVE, path)
         data = fetch(where, cap, f"the published {field}")
-        suffix = os.path.splitext(known["media"][field])[1]
+        suffix = os.path.splitext(path)[1]
         if suffix not in MAGIC or not data.startswith(MAGIC[suffix]):
             raise Problem(f"the published {field} is not a {suffix} file")
         media[field] = (suffix, data)
@@ -509,62 +653,121 @@ def served(known):
     return media, raw
 
 
-def entry(url, owner, repo, tag, known):
-    """The app as the catalog carries it and the lines the log should show
-    for it, or a Problem saying why it is not listed. `known` is what the
-    published catalog says about this id, and is used when the release it
-    names is still the release GitHub names.
-
-    Several of these run at once, so it says nothing itself: what it has to
-    report it hands back, and the caller prints it in the list's order."""
-    log = []
-    ref = tag or "HEAD"
-    # The release first, because it is the cheap question that decides
-    # whether any of the expensive ones have to be asked at all.
-    where = (f"/releases/tags/{urllib.parse.quote(tag)}" if tag
-             else "/releases/latest")
-    release = api(f"/repos/{owner}/{repo}{where}", "release")
-    if not isinstance(release, dict) or "tag_name" not in release:
+def dated(release):
+    """When a release was published, as the catalog writes it, or the Problem
+    that keeps it out: a draft, a pre-release, no date, a date past what a
+    console's unsigned seconds hold, or a tag the console cannot make a
+    version of."""
+    if not isinstance(release, dict) or not isinstance(release.get("tag_name"), str):
         raise Problem("GitHub answered with something other than a release")
-    # /releases/latest never answers with one of these; a pinned tag can.
+    tag = release["tag_name"]
     if release.get("draft") or release.get("prerelease"):
-        raise Problem(f"{release['tag_name']} is a draft or a pre-release")
+        raise Problem(f"{tag} is a draft or a pre-release")
     try:
         published = datetime.fromisoformat(
             release["published_at"].replace("Z", "+00:00"))
     except (KeyError, TypeError, ValueError, AttributeError):
-        raise Problem("the release has no published_at") from None
-    tag = release["tag_name"]
-    if not isinstance(tag, str) or not tag or tag == "v" or len(tag) > 31:
-        raise Problem("release tag must be 1 to 31 characters and not just v")
+        raise Problem(f"{tag} has no published_at") from None
+    if not tag or tag == "v" or len(tag) > 64 or CONTROL.search(tag):
+        raise Problem("release tag must be 1 to 64 characters and not just v")
     if not 0 < published.timestamp() < 2**32:
-        raise Problem("release publication time is outside the PSPDX v1 range")
-    published_at = published.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        raise Problem(f"{tag}: publication time is outside the PSPDX v1 range")
+    return published.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    # The same version published at the same second is the same release, and
-    # the same release is the same package: what the catalog says about it
-    # cannot have changed without the author publishing again.
-    was = (known or {}).get("release", {})
-    if known and was.get("tag") == tag and was.get("published_at") == published_at:
-        return again(known, ref, owner, repo, release), [f"unchanged, {tag}"]
 
-    spec, raw = read_pspdx(owner, repo, ref)
-    check_source(spec, owner, repo)
-    meta = api(f"/repos/{owner}/{repo}", "repository")
-    if not isinstance(meta, dict):
-        raise Problem("GitHub answered with something other than a repository")
-
-    zips = [a for a in release.get("assets", [])
-            if a["name"].lower().endswith(".zip")]
+def the_zip(release):
+    """The one zip on a release. One release is one package: two zips are a
+    question for the author, and the run cannot guess which is the install."""
+    zips = [a for a in release.get("assets") or []
+            if isinstance(a, dict) and str(a.get("name", "")).lower().endswith(".zip")]
     if not zips:
         raise Problem(f"{release['tag_name']} has no zip attached")
     if len(zips) > 1:
         raise Problem(f"{release['tag_name']} has {len(zips)} zips: "
                       + ", ".join(a["name"] for a in zips)
                       + "; one release is one package")
-    asset = zips[0]
+    return zips[0]
 
-    sha, root, sfo, sections = package(asset, log)
+
+def changelog(body):
+    """The release's notes as plain text: a line break however GitHub stored
+    it becomes a newline, a tab a space, and any other control character is
+    dropped, because the catalog's changelog holds no more than that. Cut on
+    a space when it is too long, as a summary is."""
+    if not isinstance(body, str):
+        return ""
+    text = body.replace("\r\n", "\n").replace("\r", "\n").replace("\t", " ")
+    text = PARAGRAPHS.sub("", text).strip()
+    if len(text) <= CHANGELOG:
+        return text
+    return text[:CHANGELOG - 3].rsplit(" ", 1)[0].rstrip() + "..."
+
+
+def published(release, when, asset, sha, md5):
+    """One release as the catalog lists it."""
+    notes = changelog(release.get("body"))
+    return {"tag": release["tag_name"], "published_at": when,
+            "url": asset["browser_download_url"], "size": asset["size"], "sha256": sha,
+            **({"eboot_md5": md5} if md5 else {}),
+            **({"changelog": notes} if notes else {})}
+
+
+def entry(url, owner, repo, tag, known):
+    """The app as the catalog carries it and the lines the log should show
+    for it, or a Problem saying why it is not listed. `known` is what the
+    published catalog says about this id, and is used when the newest release
+    it names is still the newest GitHub names.
+
+    Several of these run at once, so it says nothing itself: what it has to
+    report it hands back, and the caller prints it in the list's order."""
+    log = []
+    ref = tag or "HEAD"
+    # The releases first, because they are the cheap question that decides
+    # whether any of the expensive ones have to be asked at all. One request
+    # either way: a pinned tag is that release and no other, and otherwise
+    # the list, of which the drafts and the pre-releases are no part.
+    if tag:
+        releases = [api(f"/repos/{owner}/{repo}/releases/tags/{urllib.parse.quote(tag)}",
+                        "release")]
+    else:
+        releases = api(f"/repos/{owner}/{repo}/releases?per_page={RELEASE_PAGE}", "releases")
+        if not isinstance(releases, list):
+            raise Problem("GitHub answered with something other than a list of releases")
+        releases = [r for r in releases
+                    if not (isinstance(r, dict) and (r.get("draft") or r.get("prerelease")))]
+        if not releases:
+            raise Problem("no published release")
+    # The newest is held to every rule, because it is the one a console
+    # installs; an older one that breaks a rule only drops out of the history.
+    dates = [(dated(releases[0]), releases[0])]
+    for release in releases[1:]:
+        try:
+            dates.append((dated(release), release))
+        except Problem as ex:
+            log.append(f"left out of the history: {ex}")
+    dates.sort(key=lambda pair: pair[0], reverse=True)
+    when, latest = dates[0]
+
+    # The same version published at the same second is the same release, and
+    # the same release is the same package: what the catalog says about it
+    # cannot have changed without the author publishing again.
+    was = ((known or {}).get("releases") or [{}])[0]
+    if known and was.get("tag") == latest["tag_name"] and was.get("published_at") == when:
+        return again(known, ref, owner, repo, latest), [f"unchanged, {latest['tag_name']}"]
+
+    spec, raw = read_pspdx(owner, repo, ref)
+    check_source(spec, owner, repo)
+    # A plugin or an ISO is a valid file, but everything below is the check
+    # for an EBOOT under PSP/GAME, and none of it says whether either of those
+    # would install. Left out with that said, rather than listed on a guess.
+    if spec.get("type", HOMEBREW) != HOMEBREW:
+        raise Problem(f"type {spec['type']} is not supported by this catalog yet")
+    meta = api(f"/repos/{owner}/{repo}", "repository")
+    if not isinstance(meta, dict):
+        raise Problem("GitHub answered with something other than a repository")
+
+    asset = the_zip(latest)
+    sha, root, sfo, sections, md5 = package(asset, log)
     # The package and the title are said out loud rather than served: the
     # console copies the package into installdir and reads the title off the
     # stick, and whoever reads this log is looking for the zip's own shape.
@@ -573,33 +776,60 @@ def entry(url, owner, repo, tag, known):
     media, notes = pictures(sections)
     log.extend(notes)
 
+    # The older releases: each a zip of its own, held to the same package
+    # rules, and hashed only the first time it is seen. What the published
+    # catalog already says about the same asset of the same release is
+    # copied, since a release asset does not change under its name.
+    hashed = {(r.get("tag"), r.get("published_at"), r.get("url"), r.get("size")): r
+              for r in (known or {}).get("releases") or [] if isinstance(r, dict)}
+    history = [published(latest, when, asset, sha, md5)]
+    for older_when, older in dates[1:]:
+        if len(history) == RELEASES:
+            break
+        try:
+            older_asset = the_zip(older)
+            before = hashed.get((older["tag_name"], older_when,
+                                 older_asset["browser_download_url"], older_asset["size"]))
+            if before and isinstance(before.get("sha256"), str):
+                older_sha, older_md5 = before["sha256"], before.get("eboot_md5")
+            else:
+                older_sha, _, _, _, older_md5 = package(older_asset, log)
+        except Problem as ex:
+            log.append(f"left out of the history: {ex}")
+            continue
+        history.append(published(older, older_when, older_asset, older_sha, older_md5))
+
     # The licence GitHub reports when it recognises the file; NOASSERTION is
     # its word for a file it cannot place, and that is no licence to list.
     spdx = (meta.get("license") or {}).get("spdx_id") or ""
     if spdx == "NOASSERTION":
         spdx = ""
+    # The project's own page, when GitHub has one that fits the catalog's rule
+    # for an address.
+    home = meta.get("homepage")
+    website = (home if isinstance(home, str) and home.startswith("https://")
+               and 8 < len(home) <= 255 and not CONTROL.search(home) else None)
 
     # The file wins over what was derived: what it says, it says on purpose,
     # for the summary GitHub's description gets wrong or the licence GitHub
     # cannot see.
     app = {
         "id": ident(owner, repo),
-        "name": spec["name"],
-        "author": spec.get("author", owner),
-        "summary": spec.get("summary", trim(meta.get("description") or "")),
-        "category": spec["category"],
-        "license": spec.get("license", spdx),
         "source": url,
-        "installdir": spec["installdir"],
-        "release": {
-            "tag": tag,
-            "published_at": published_at,
-            "download": {
-                "url": asset["browser_download_url"],
-                "sha256": sha,
-                "size": asset["size"],
-            },
-        },
+        "name": spec["name"],
+        # The words nothing stands in for: a file that gives no tags, no
+        # type, no description or no list is an entry without them, not one
+        # with a guess.
+        **{key: spec[key] for key in ("type", "tags") if key in spec},
+        # Always there for a homebrew, derived where the file said nothing,
+        # so that a console reading the catalog never has to know the rule.
+        "installdir": installdir(spec),
+        "summary": spec.get("summary", trim(meta.get("description") or "")),
+        "author": spec.get("author", owner),
+        "license": spec.get("license", spdx),
+        **{key: spec[key] for key in ("description", "listed_by") if key in spec},
+        **({"website": website} if website else {}),
+        "releases": history,
         "_media": media,
         "_raw": raw,
         # Where the file that consented to all of this can be read, at the ref
@@ -610,10 +840,11 @@ def entry(url, owner, repo, tag, known):
         # three fall back to GitHub, and a page that shows where a fact came
         # from has to know which of the two it was.
         "_said": sorted(spec),
-        "_page": release.get("html_url", url + "/releases"),
+        "_page": latest.get("html_url", url + "/releases"),
     }
-    log.append(f"{app['id']} {tag}: {app['name']!r}, "
-               + (", ".join(sorted(media)) or "nothing in the PBP"))
+    log.append(f"{app['id']} {latest['tag_name']}: {app['name']!r}, "
+               + (", ".join(sorted(media)) or "nothing in the PBP")
+               + f", {len(history)} release{'' if len(history) == 1 else 's'}")
     return app, log
 
 
@@ -634,8 +865,13 @@ def shape(apps, generated):
     for app in apps:
         for field, (suffix, data) in app.get("_media", {}).items():
             called, _ = MEDIA[field]
-            app.setdefault("media", {})[field] = (f"{APPS}/{app['id']}/"
-                                                  f"{called}-{sha256(data)[:8]}{suffix}")
+            path = f"{APPS}/{app['id']}/{called}-{sha256(data)[:8]}{suffix}"
+            # The catalog has room for several pictures of an app; the EBOOT
+            # carries one, and it is the first.
+            if field == "screenshot":
+                app.setdefault("media", {})["screenshots"] = [path]
+            else:
+                app.setdefault("media", {})[field] = path
     return {
         "schema": SCHEMA,
         "generated_at": generated,
@@ -652,7 +888,7 @@ def write_site(apps, broken, catalog, out, listing=None, notes=None):
         home = os.path.join(out, APPS, app["id"])
         os.makedirs(home, exist_ok=True)
         for field, (_, data) in app.pop("_media", {}).items():
-            with open(os.path.join(out, *app["media"][field].split("/")), "wb") as file:
+            with open(os.path.join(out, *page.media_path(app, field).split("/")), "wb") as file:
                 file.write(data)
         with open(os.path.join(home, READ), "wb") as file:
             file.write(app.pop("_raw"))
@@ -715,12 +951,15 @@ def changes(apps, live):
     notes = []
     for app in apps:
         before = old.get(app["id"])
+        # The newest release is the one a console installs, so it alone makes
+        # an update; an older one GitHub forgot is only a change.
+        newest = app["releases"][0]
         if before is None:
-            notes.append(("New app", app["name"], app["release"]["tag"]))
-        elif before.get("release") != app["release"]:
-            notes.append(("Update", app["name"], app["release"]["tag"]))
-        elif {k: v for k, v in before.items() if k != "release"} != {
-                k: v for k, v in app.items() if not k.startswith("_") and k != "release"}:
+            notes.append(("New app", app["name"], newest["tag"]))
+        elif (before.get("releases") or [None])[0] != newest:
+            notes.append(("Update", app["name"], newest["tag"]))
+        elif {k: v for k, v in before.items()} != {
+                k: v for k, v in app.items() if not k.startswith("_")}:
             notes.append(("Changed", app["name"], ""))
     for app_id, app in old.items():
         if app_id not in new:

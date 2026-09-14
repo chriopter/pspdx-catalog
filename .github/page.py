@@ -18,6 +18,7 @@ import html
 import json
 import os
 import struct
+import urllib.parse
 from datetime import datetime, timezone
 
 import config
@@ -62,11 +63,15 @@ h1 a { color: inherit; text-decoration: none; }
 .hero h2 { margin: 0 0 3px; font-size: 28px; font-weight: 550; letter-spacing: -.035em; line-height: 1.2; }
 .hero .who { font-size: 12px; color: var(--dim); }
 .hero p { margin: 10px 0 0; color: var(--dim); }
+.hero .listed { margin-top: 6px; }
+.description { max-width: 72ch; padding: 0 0 28px; overflow-wrap: anywhere; }
+.description p { margin: 0; }
 .hero .actions { flex-shrink: 0; }
 .detail-columns { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 32px; padding-bottom: 28px; }
 .detail-columns > div { min-width: 0; }
 .shots { margin: 0 0 22px; }
 .shots img { display: block; width: 100%; height: auto; }
+.shots img + img { margin-top: 12px; }
 .aside { border-top: 1px solid var(--rule); padding: 16px 0; }
 .detail-columns .aside { border-top: 0; padding: 0; }
 .release .actions { margin-top: 20px; }
@@ -276,7 +281,7 @@ def actions(app):
             f'<a class="get" href="{e(app["source"])}" target="_blank" '
             f'rel="noopener noreferrer" title="GitHub (new tab)" '
             f'aria-label="{e(app["name"])} on GitHub (new tab)">{github}</a>'
-            f'<a class="get" href="{e(app["release"]["download"]["url"])}" target="_blank" '
+            f'<a class="get" href="{e(app["releases"][0]["url"])}" target="_blank" '
             f'rel="noopener noreferrer" title="Download (new tab)" '
             f'aria-label="Download {e(app["name"])} (new tab)">{download}</a>'
             '</div>')
@@ -309,7 +314,7 @@ def render(catalog, apps, broken, out, settings=None, notes=None):
                f'loading="lazy">' if "icon" in app.get("media", {})
                else '<div class="noicon">no icon</div>')
         tiles.append(TILE.format(art=art, id=e(app["id"]), name=e(app["name"]),
-                                 author=e(app["author"]), actions=actions(app)))
+                                 author=e(app.get("author", "")), actions=actions(app)))
         home = os.path.join(out, *HOME.format(id=app["id"]).split("/")[:-1])
         os.makedirs(home, exist_ok=True)
         with open(os.path.join(home, "index.html"), "w",
@@ -378,10 +383,33 @@ def left_out(broken):
 """
 
 
+def media_path(app, field):
+    """Where the catalog says one of an app's EBOOT files is, or None. The
+    picture is the first of the catalog's screenshots, since the EBOOT
+    carries one and the catalog has room for more."""
+    media = app.get("media") or {}
+    if field == "screenshot":
+        return (media.get("screenshots") or [None])[0]
+    return media.get(field)
+
+
+def linked(path):
+    """A file the catalog names, as an app's own page links it: an address
+    elsewhere as it stands, one relative to the catalog from two directories
+    down, where the page sits."""
+    return path if "://" in path else UP + path
+
+
+def host(url):
+    """The host of an address, which is what a person calls a site: no scheme,
+    no login, no port, no path."""
+    return urllib.parse.urlsplit(url).hostname or url
+
+
 def beside(app, field):
     """A file of this app as its own page addresses it: they sit in the same
     directory, so the name is the whole link."""
-    return app["media"][field].rsplit("/", 1)[-1]
+    return media_path(app, field).rsplit("/", 1)[-1]
 
 
 def pixels(path):
@@ -423,13 +451,17 @@ def origins(app, out):
     the EBOOT. A reader sees at a glance which half of an app is somebody's
     words and which half no hand ever touched."""
     e = html.escape
-    release = app["release"]
+    release = app["releases"][0]
 
     said = []
     for field, what in (("name", "name"), ("author", "author"),
-                        ("summary", "summary"), ("category", "category"),
-                        ("license", "licence"), ("installdir", "installdir")):
-        value = e(app[field]) or '<span class="gone">none</span>'
+                        ("summary", "summary"), ("type", "type"), ("tags", "tags"),
+                        ("license", "licence"), ("installdir", "installdir"),
+                        ("listed_by", "listed by")):
+        # Tags are the author's to give or not, so an entry may have none.
+        value = app.get(field, "")
+        value = e(", ".join(value) if isinstance(value, list) else value) \
+            or '<span class="gone">none</span>'
         # Which of these the author wrote is known only when the .pspdx was
         # read this run. An entry copied out of the published catalog says
         # nothing about that, so the page claims nothing about it either.
@@ -439,7 +471,7 @@ def origins(app, out):
         said.append((what, value))
 
     day = release["published_at"].split("T")[0]
-    download = release["download"]
+    download = release
     published = [
         ("tag", e(release["tag"])),
         ("published", e(day)),
@@ -447,6 +479,8 @@ def origins(app, out):
                     f'{e(download["url"].rsplit("/", 1)[-1])}</a> '
                     f'<span class="note">{size(download["size"])}</span>'),
         ("sha256", e(download["sha256"])),
+        ("history", f'{len(app["releases"])} release'
+                    + ("" if len(app["releases"]) == 1 else "s")),
         ("release", f'<a href="{e(app["_page"])}">'
                     f'{e(app["_page"].rsplit("/", 1)[-1])}</a>'),
         ("repository", f'<a href="{e(app["source"])}">'
@@ -458,14 +492,14 @@ def origins(app, out):
     # look the same to a reader otherwise.
     carried = []
     for field, what, called in ARTEFACTS:
-        if field in app.get("media", {}):
+        if media_path(app, field):
             here = beside(app, field)
             told = f'<a href="{e(here)}">{called}</a>'
-            shape = pixels(os.path.join(out, *app["media"][field].split("/")))
+            shape = pixels(os.path.join(out, *media_path(app, field).split("/")))
             if shape:
                 told += f' <span class="note">{shape}</span>'
             told += (' <span class="note">'
-                     + size(os.path.getsize(os.path.join(out, *app["media"][field].split("/"))))
+                     + size(os.path.getsize(os.path.join(out, *media_path(app, field).split("/"))))
                      + "</span>")
         else:
             told = f'{called} <span class="gone">absent</span>'
@@ -494,18 +528,33 @@ def app_page(app, out, settings):
     size the XMB draws it, the picture out of the EBOOT, where every value
     came from, and the zip."""
     e = html.escape
-    release = app["release"]
+    release = app["releases"][0]
     icon = (f'<img src="{e(beside(app, "icon"))}" alt="" width="144" height="80">'
             if "icon" in app.get("media", {}) else "")
-    about = " &middot; ".join(x for x in (f'by {e(app["author"])}',
-                                          e(app["category"]),
-                                          e(app["license"])) if x)
+    about = " &middot; ".join(x for x in (f'by {e(app["author"])}' if app.get("author") else "",
+                                          e(app.get("type", "")),
+                                          e(", ".join(app.get("tags", []))),
+                                          e(app.get("license", ""))) if x)
+    # The list that vouches for the app, by the name a person knows it by.
+    listed = (f'\n      <div class="who listed">Listed by <a href="{e(app["listed_by"])}" '
+              f'target="_blank" rel="noopener noreferrer">{e(host(app["listed_by"]))}</a></div>'
+              if app.get("listed_by") else "")
+    # The author's own words, as plain text: every line of it a line here,
+    # and nothing in it read as markup.
+    description = ""
+    if app.get("description"):
+        lines = "<br>\n    ".join(e(line) for line in app["description"].split("\n"))
+        description = f'  <div class="description">\n    <p>{lines}</p>\n  </div>\n'
 
+    # Every picture the catalog has, the one out of the EBOOT first.
+    pictures = (app.get("media") or {}).get("screenshots") or []
     shots = ""
-    if "screenshot" in app.get("media", {}):
-        shots = (f'\n  <div class="shots">\n'
-                 f'    <img src="{e(beside(app, "screenshot"))}" '
-                 f'alt="{e(app["name"])} running" loading="lazy">\n  </div>\n')
+    if pictures:
+        shots = ('\n  <div class="shots">\n'
+                 + "".join(f'    <img src="{e(linked(path))}" '
+                           f'alt="{e(app["name"])} running" loading="lazy">\n'
+                           for path in pictures)
+                 + '  </div>\n')
 
     manifest, published, media = origins(app, out)
     day = datetime.fromisoformat(release["published_at"].replace("Z", "+00:00")).strftime("%d %b %Y")
@@ -513,8 +562,11 @@ def app_page(app, out, settings):
         ("Version", f'<a href="{e(app["_page"])}" target="_blank" '
                     f'rel="noopener noreferrer">{e(release["tag"])}</a>'),
         ("Updated", day),
-        ("Download", size(release["download"]["size"])),
-        ("Installs to", e(app["installdir"])),
+        ("Download", size(release["size"])),
+        ("Installs to", e(app.get("installdir", ""))),
+        *([("Website", f'<a href="{e(app["website"])}" target="_blank" '
+                       f'rel="noopener noreferrer">{e(host(app["website"]))}</a>')]
+          if app.get("website") else []),
     ])
     body = f"""  <main class="detail">
   <div class="hero">
@@ -522,10 +574,10 @@ def app_page(app, out, settings):
     <div>
       <h2>{e(app["name"])}</h2>
       <div class="who">{about}</div>
-      <p>{e(app["summary"])}</p>
+      <p>{e(app.get("summary", ""))}</p>{listed}
     </div>
   </div>
-  <div class="detail-columns">
+{description}  <div class="detail-columns">
     <div class="preview">{shots}</div>
     <div class="release">{latest}{actions(app)}</div>
   </div>
