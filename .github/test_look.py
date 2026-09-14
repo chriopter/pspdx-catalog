@@ -135,7 +135,7 @@ class CatalogRegressionTests(unittest.TestCase):
         spec = {"schema": look.PSPDX_SCHEMA, "name": "Example",
                 "source": "https://github.com/example/demo",
                 "category": "demo"}
-        for folder in (".", "..", "../Other", "Example\n"):
+        for folder in (".", "..", "../Other", "Example\n", ".pspdx-stage", ".PSPDX-Stage"):
             with self.subTest(folder=folder), self.assertRaises(look.Problem):
                 look.validate(dict(spec, installdir="PSP/GAME/" + folder))
         for folder in ("PSPDXDemo", "Example-1.2", ".example", "A" * 32):

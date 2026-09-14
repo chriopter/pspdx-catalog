@@ -76,9 +76,12 @@ GITHUB = re.compile(r"https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?
 
 # The rules out of schema/pspdx-v1.json, by hand. The category is one word for
 # what this one app is, and the install directory is matched whole, because
-# the schema's `$` is the end of the string and Python's is not quite.
+# the schema's `$` is the end of the string and Python's is not quite. The
+# folder is not . or .., and not .pspdx-stage in any case: the client unpacks
+# every install there first, and the stick does not tell the cases apart.
+# test_schema_drift.py holds these to the schema, case by case.
 CATEGORIES = ("game", "emulator", "app", "plugin", "demo")
-INSTALLDIR = re.compile(r"PSP/GAME/(?!\.{1,2}$)[A-Za-z0-9_.-]{1,32}")
+INSTALLDIR = re.compile(r"PSP/GAME/(?!(?:\.{1,2}|(?i:\.pspdx-stage))$)[A-Za-z0-9_.-]{1,32}")
 
 # The file's keys, which of them must be there, and the longest each string
 # may be. The caps are the schema's: a name fits the XMB, a summary fits one
@@ -294,7 +297,7 @@ def validate(data):
     if not isinstance(data["installdir"], str) \
             or not INSTALLDIR.fullmatch(data["installdir"]):
         raise Problem('.pspdx: "installdir" is PSP/GAME/ and 1 to 32 of '
-                      "[A-Za-z0-9_.-], excluding . and .., in version 1")
+                      "[A-Za-z0-9_.-], excluding ., .. and .pspdx-stage, in version 1")
     return data
 
 
