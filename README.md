@@ -3,53 +3,80 @@
 Browse PSP homebrew on the **[catalog website →](https://chriopter.github.io/pspdx-catalog/)**
 or in [PSPDX](https://github.com/chriopter/pspdx) on your PSP.
 
-At its core, this catalog is a [list of repositories](repos.txt). A GitHub
-workflow reads each project's `.pspdx` and latest release, then publishes one
-`catalog.json` with release details and EBOOT previews. The PSP can browse
-and check many apps with one request; downloads still come from the authors.
+## How it works
 
-## Make your own catalog
-
-Fork this repository, put your chosen repositories in [`repos.txt`](repos.txt),
-and set your name, Pages URL and repository URL in
-[`catalog.config.json`](catalog.config.json). Enable GitHub Pages for the fork.
-The workflow builds the site and updates it hourly. The `.pspdx` and catalog
-schema URLs stay the same because they identify the shared formats.
+- **A list.** [`repos.txt`](repos.txt) holds one GitHub repository per line.
+  It's just like a phonebook.
+- **A builder.** Every hour a GitHub workflow reads each repo's `.pspdx` and
+  latest release → hashes the ZIP → extracts artwork from the EBOOT →
+  publishes `catalog.json`.
+- **Fast on the PSP.** One request lists every app. Downloads still come from
+  the authors.
 
 ## Add an app
 
-Open an [issue](https://github.com/chriopter/pspdx-catalog/issues) with the
-repository URL. The project needs a root `.pspdx` and a published release
-containing exactly one ZIP with exactly one `EBOOT.PBP`. Drafts and
-prereleases are skipped. [PSPDX Demo](https://github.com/chriopter/pspdx-demo)
-shows a complete example.
+- Open an [issue](https://github.com/chriopter/pspdx-catalog/issues) with the
+  repository URL.
+- The repo needs a root `.pspdx` and a release with one ZIP holding one
+  `EBOOT.PBP`. [PSPDX Demo](https://github.com/chriopter/pspdx-demo) is a
+  complete example.
+- Drafts and prereleases are skipped.
 
-## How it works
+## Make your own catalog
 
-The hourly workflow checks each repository's latest release. If its version
-and publication date are unchanged, the existing catalog entry is reused.
-Otherwise, the builder reads `.pspdx`, downloads and hashes the ZIP, and
-extracts any valid icon, picture, video and sound from its EBOOT. These media
-files are optional.
+1. Fork this repository.
+2. Put your repositories in [`repos.txt`](repos.txt).
+3. Set name, Pages URL and repository URL in
+   [`catalog.config.json`](catalog.config.json).
+4. Enable GitHub Pages. Done! It updates every hour.
 
-The workflow deploys every hour, so `generated_at` in `catalog.json` is the
-time of the last publication; PSPDX warns when it is a day old. A push to
-`master` or a manual run checks everything again, including manifest-only
-edits. If no app is valid, the live site stays up. Individual failed apps are
-left out, so a fresh timestamp does not guarantee every app was checked.
-The published `catalog.json` is also the builder's record of previous releases.
+Keep the schema URLs as they are: they identify the shared formats.
 
-## Files
+<details>
+<summary><b>Builder</b> · runs, reuse, failures</summary>
 
-- [`repos.txt`](repos.txt) — one GitHub repository per line; `@tag` pins a release.
-- [`catalog.config.json`](catalog.config.json) — catalog name and URLs.
-- [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) — tests, builds and deploys.
-- [`.github/look.py`](.github/look.py) — reads releases and builds the catalog.
-- [`.github/page.py`](.github/page.py) — renders the website.
+#### Runs
 
-The generated site contains `catalog.json` and `catalog.txt` (a copy of
-`repos.txt`). A client can use the site URL as one source: read the JSON for
-fast browsing, or the text list for direct repository checks if JSON fails.
-It also contains a readable `catalog.html`, an `index.html` for browsing,
-and a page plus available EBOOT media for each app.
-The JSON format is defined by the [catalog schema](https://github.com/chriopter/pspdx/blob/master/schema/catalog-v1.json).
+- **Hourly, release unchanged** → same tag and `published_at` → reuse the entry
+- **Hourly, new release** → read `.pspdx` → download and hash the ZIP →
+  extract icon, picture, video and sound
+- **Push to `master` or manual run** → read everything again, including
+  manifest-only edits
+
+#### Timestamp
+
+- The site is published every hour, so `generated_at` is the last run.
+- PSPDX warns when it is a day old.
+- The published `catalog.json` is the builder's only memory.
+
+#### Failures
+
+- A broken app is left out, the run goes red, the rest stays on the site.
+- A fresh timestamp does not guarantee every app was checked.
+- No valid app at all → the live site stays as it is.
+
+</details>
+
+<details>
+<summary><b>Files</b> · repository, site</summary>
+
+#### Repository
+
+| File | Purpose |
+|---|---|
+| [`repos.txt`](repos.txt) | One repository per line; `@tag` pins a release |
+| [`catalog.config.json`](catalog.config.json) | Catalog name and URLs |
+| [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) | Tests, builds and deploys |
+| [`.github/look.py`](.github/look.py) | Reads releases and builds the catalog |
+| [`.github/page.py`](.github/page.py) | Renders the website |
+
+#### Site
+
+| File | Purpose |
+|---|---|
+| `catalog.json` | Fast browsing; [catalog schema](https://github.com/chriopter/pspdx/blob/master/schema/catalog-v1.json) |
+| `catalog.txt` | Copy of `repos.txt`; PSPDX falls back to it and asks the repos directly |
+| `index.html`, `catalog.html` | Browse page and readable catalog |
+| `apps/<id>/` | One page and the EBOOT media per app |
+
+</details>
