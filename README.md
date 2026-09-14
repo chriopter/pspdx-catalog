@@ -25,23 +25,14 @@ or in [PSPDX](https://github.com/chriopter/pspdx) on your PSP.
 <details>
 <summary><b>The .pspdx</b> · fields, tags, repos without one</summary>
 
-- **Required** → `schema`, `source` (the repo URL) and `name`, up to 40 characters
-- **`tags`** → up to 8 words, each up to 24 characters; `game`, `emulator`,
-  `app` and `demo` get a tab on the PSP
-- **`installdir`** → only if the folder isn't the repo name; the default is
-  `PSP/GAME/<repo name>`
-- **`summary`, `author`, `license`** → up to 60 characters each; left out,
-  GitHub's description, owner and license fill in
-- **`description`** → plain text, up to 2500 characters, newlines allowed;
-  shown on the app's page
-- **`type`** → `homebrew` by default; this catalog lists only homebrew
-- **`listed_by`** → the home page of a list that vouches for the app; shown
-  on the app's page as "Listed by"
-- **No `.pspdx` in the repo?** The format lets a list serve one and set
-  `listed_by`. This catalog lists GitHub repos only and serves no `.pspdx`
-  of its own, so the repo needs its own file.
+- **Required** → only `schema`, `source` (the repo URL) and `name`
+- **`tags`** → `game`, `emulator`, `app` and `demo` get a tab on the PSP
+- **`installdir`** → only if the folder isn't the repo name
+- **No `.pspdx` in the repo?** → put one up elsewhere with `listed_by` set,
+  and add its URL (ending in `.pspdx`) to `repos.txt`; the repo's own file
+  wins once it has one
 
-All rules: [the PSPDX standard](https://github.com/chriopter/pspdx#the-pspdx-standard).
+All fields: [PSPDX standard](https://chriopter.github.io/pspdx/)
 
 </details>
 
@@ -88,7 +79,7 @@ Keep the schema URLs as they are: they identify the shared formats.
 
 | File | Purpose |
 |---|---|
-| [`repos.txt`](repos.txt) | One repository per line; `@tag` pins a release |
+| [`repos.txt`](repos.txt) | One repository per line; `@tag` pins a release; a `.pspdx` URL stands in for a repo without one |
 | [`catalog.config.json`](catalog.config.json) | Catalog name and URLs |
 | [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) | Tests, builds and deploys |
 | [`.github/look.py`](.github/look.py) | Reads releases and builds the catalog |
@@ -98,7 +89,7 @@ Keep the schema URLs as they are: they identify the shared formats.
 
 | File | Purpose |
 |---|---|
-| `catalog.json` | Fast browsing; [catalog schema](https://chriopter.github.io/pspdx/schema/catalog-v1.json) |
+| `catalog.json` | Fast browsing; [catalog format](https://chriopter.github.io/pspdx/#catalog-v1) |
 | `catalog.txt` | Copy of `repos.txt`; PSPDX falls back to it and asks the repos directly |
 | `index.html`, `catalog.html` | Browse page and readable catalog |
 | `apps/<id>/` | One page per app (summary, description, screenshots, latest release, where each value came from) and its EBOOT media |

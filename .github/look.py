@@ -338,10 +338,11 @@ def validate(data):
     says how long it may be."""
     if not isinstance(data, dict):
         raise Problem(".pspdx is not a JSON object")
-    for key in data:
-        if key not in KEYS:
-            raise Problem(f".pspdx: {key!r} is not a field; "
-                          "the fields are " + ", ".join(KEYS))
+    # A field version 1 does not name is ignored, as every reader of the
+    # format ignores it: a file written for a later version still says all
+    # this one needs. It is never copied on, and `ignored` names it in the
+    # log so an author who misspelt a field still finds out.
+    data = {key: value for key, value in data.items() if key in KEYS}
     for key in REQUIRED:
         if key not in data:
             raise Problem(f".pspdx: no {key!r}")
@@ -409,6 +410,16 @@ def validate(data):
     return data
 
 
+def ignored(raw):
+    """The keys of a .pspdx that are no field of version 1, in the order the
+    file has them: what validate passed over, for the log."""
+    try:
+        data = json.loads(raw.decode("utf-8") if isinstance(raw, bytes) else raw)
+    except ValueError:
+        return []
+    return [key for key in data if key not in KEYS] if isinstance(data, dict) else []
+
+
 def installdir(spec):
     """Where a homebrew goes on the stick: what its file says, or else a
     folder under PSP/GAME named after it and cut to the 32 characters a folder
@@ -445,6 +456,8 @@ def read_pspdx(owner, repo, ref):
         raise Problem(".pspdx is not UTF-8") from None
     except ValueError as e:
         raise Problem(f".pspdx is not JSON: {e}") from None
+    for key in ignored(raw):
+        print(f"  {owner}/{repo}: .pspdx field {key!r} is not in version 1; ignored")
     # The bytes come back with the parsed file: what the catalog used is
     # mirrored beside the app's page, and a copy is only honest if it is the
     # copy that was read.

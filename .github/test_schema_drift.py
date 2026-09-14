@@ -59,6 +59,10 @@ def without(key):
     return {k: v for k, v in FULL.items() if k != key}
 
 
+# Cases the schema refuses but every reader accepts: only keys the format
+# does not name, which readers pass over.
+IGNORED_BY_READERS = {"an unknown key", "a key in another case", "category, the old field"}
+
 # (what it is, the file, whether it is a valid .pspdx)
 CASES = [
     ("every field", FULL, True),
@@ -258,6 +262,10 @@ class SchemaDriftTests(unittest.TestCase):
     def test_look_and_the_schema_judge_every_case_as_the_format_does(self):
         self.assertEqual(self.pspdx["$schema"], "https://json-schema.org/draft/2020-12/schema")
         for what, data, valid in CASES:
+            # The one place they part on purpose: a reader ignores a key the
+            # format does not name, while the schema refuses it, so that an
+            # author checking a file still hears about a misspelt field.
+            reader = valid or what in IGNORED_BY_READERS
             with self.subTest(what):
                 try:
                     look.validate(data)
@@ -267,7 +275,7 @@ class SchemaDriftTests(unittest.TestCase):
                 # problems() checks the schema itself first, and refuses to
                 # run without the format checkers.
                 found = check_schema.problems(data, self.pspdx)
-                self.assertEqual((said == "accepted", not found), (valid, valid),
+                self.assertEqual((said == "accepted", not found), (reader, valid),
                                  f"look.py: {said}; schema: {found or 'accepted'}")
 
     def test_the_tables_in_look_are_the_schemas(self):
