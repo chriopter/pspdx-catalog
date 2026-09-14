@@ -12,6 +12,16 @@ import page
 
 
 class CatalogRegressionTests(unittest.TestCase):
+    def test_change_labels_compare_published_apps(self):
+        old = {"apps": [{"id": "old", "name": "Old", "release": {"tag": "v1"}},
+                        {"id": "gone", "name": "Gone", "release": {"tag": "v1"}}]}
+        current = [{"id": "old", "name": "Old", "release": {"tag": "v2"}},
+                   {"id": "new", "name": "New <App>", "release": {"tag": "v1"}}]
+        notes = look.changes(current, old)
+        self.assertEqual(notes, [("Update", "Old", "v2"),
+                                 ("New app", "New <App>", "v1"),
+                                 ("Removed", "Gone", "")])
+
     def test_catalog_configuration_rebrands_pages_and_drives_live_url(self):
         with tempfile.TemporaryDirectory() as directory:
             path = pathlib.Path(directory) / "catalog.config.json"

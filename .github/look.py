@@ -641,7 +641,7 @@ def shape(apps, generated):
     }
 
 
-def write_site(apps, broken, catalog, out, listing=None):
+def write_site(apps, broken, catalog, out, listing=None, notes=None):
     # Whatever a previous run left here is not evidence that any of it is
     # still in anybody's EBOOT, or that the app is still on the list.
     shutil.rmtree(os.path.join(out, APPS), ignore_errors=True)
@@ -664,7 +664,7 @@ def write_site(apps, broken, catalog, out, listing=None):
     # style and the wave they share, so the pages write themselves. It comes
     # after the pictures because a page measures the film and the sound where
     # they have just been written.
-    page.render(catalog, apps, broken, out)
+    page.render(catalog, apps, broken, out, notes=notes)
 
     have = ", ".join(f"{sum(field in app.get('media', {}) for app in apps)} {field}s"
                      for field in MEDIA)
@@ -675,10 +675,8 @@ def write_site(apps, broken, catalog, out, listing=None):
 def memory():
     """The catalog that is published now, which is the only memory there is,
     or None when there is none to be had: the first run, an unreachable site,
-    something that is not a catalog, or a run told to forget."""
-    if FORCE:
-        print("FORCE=1: reading every repository from scratch")
-        return None
+    or something that is not a catalog. FORCE still reads the live catalog
+    for the change summary, but never reuses its app entries."""
     if not LIVE:
         return None
     try:
@@ -702,6 +700,29 @@ def unlike(catalog, live):
         return True
     return ({k: v for k, v in catalog.items() if k != "generated_at"}
             != {k: v for k, v in live.items() if k != "generated_at"})
+
+
+def changes(apps, live):
+    """App-level changes since the previously published catalog."""
+    if live is None:
+        return []
+    old = {app["id"]: app for app in live.get("apps", [])
+           if isinstance(app, dict) and "id" in app}
+    new = {app["id"]: app for app in apps}
+    notes = []
+    for app in apps:
+        before = old.get(app["id"])
+        if before is None:
+            notes.append(("New app", app["name"], app["release"]["tag"]))
+        elif before.get("release") != app["release"]:
+            notes.append(("Update", app["name"], app["release"]["tag"]))
+        elif {k: v for k, v in before.items() if k != "release"} != {
+                k: v for k, v in app.items() if not k.startswith("_") and k != "release"}:
+            notes.append(("Changed", app["name"], ""))
+    for app_id, app in old.items():
+        if app_id not in new:
+            notes.append(("Removed", app.get("name", app_id), ""))
+    return notes
 
 
 def walk(lines, known):
@@ -788,12 +809,17 @@ def main(argv):
 
     generated = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     live = memory()
-    known = {app["id"]: app for app in (live or {}).get("apps", [])
+    if FORCE:
+        print("FORCE=1: reading every repository from scratch")
+    known = {app["id"]: app for app in ({} if FORCE else (live or {})).get("apps", [])
              if isinstance(app, dict) and "id" in app}
 
     lines = repos(listing)
     apps, broken = walk(lines, known)
     apps.sort(key=lambda app: app["id"])
+    # shape also assigns the public media paths before the comparison.
+    catalog = shape(apps, generated) if apps else None
+    notes = changes(catalog["apps"], live) if catalog else []
 
     if not apps:
         # Every repository failing at once is far more likely to be GitHub
@@ -807,13 +833,22 @@ def main(argv):
         # generated_at is then the time of this publication, and
         # a console can tell a list nobody looks after -- a stamp a day old
         # -- from one that simply had no news. What moved is still said.
-        moved = FORCE or unlike(shape(apps, generated), live)
+        moved = FORCE or unlike(catalog, live)
         print("apps changed:", "yes" if moved else "no")
         changed = "yes"
     if changed == "yes":
         apps, broken = complete(apps, broken, lines)
         os.makedirs(out, exist_ok=True)
-        write_site(apps, broken, shape(apps, generated), out, listing)
+        write_site(apps, broken, shape(apps, generated), out, listing, notes)
+
+    if os.environ.get("GITHUB_STEP_SUMMARY"):
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+            summary.write("## Catalog changes\n\n")
+            if notes:
+                for kind, name, tag in notes:
+                    summary.write(f"- {kind}: {name}" + (f" ({tag})" if tag else "") + "\n")
+            else:
+                summary.write("No app changes.\n")
 
     for label, why in broken:
         print(f"left out: {label}: {why}")

@@ -39,6 +39,9 @@ h1 a { color: inherit; text-decoration: none; }
 .status { display: flex; gap: 18px; flex-wrap: wrap; color: var(--dim); font-size: 12px; }
 .status a { text-decoration: none; }
 .lede { color: var(--dim); margin: 24px 0; }
+.changes { border-top: 1px solid var(--rule); margin-top: 24px; padding-top: 14px; }
+.changes h2 { font-size: 14px; font-weight: 600; }
+.changes ul { margin: 8px 0 0; padding-left: 20px; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 24px; padding: 28px 0; }
 .app { display: flex; flex-direction: column; max-width: 220px; padding: 16px;
   border: 1px solid var(--rule); border-radius: 5px; background: #ffffff03; }
@@ -283,7 +286,7 @@ def shell(title, base, status, body, settings):
                         issues_url=e(repo + "/issues", quote=True))
 
 
-def render(catalog, apps, broken, out, settings=None):
+def render(catalog, apps, broken, out, settings=None, notes=None):
     """The whole site: the tiles, a directory an app with its page and its
     files, the catalog as a page, and the style and the wave they share.
     Called once, after look.py has written what each app carries, so that
@@ -310,9 +313,20 @@ def render(catalog, apps, broken, out, settings=None):
 
     day = catalog["generated_at"].split("T")[0]
     count = f"{len(apps)} app" + ("" if len(apps) == 1 else "s")
+    updates = notes or []
+    change_items = ("\n".join(f"    <li>{e(kind)}: {e(name)}"
+                              + (f" ({e(tag)})" if tag else "") + "</li>"
+                              for kind, name, tag in updates)
+                    if updates else "    <li>No app changes</li>")
     body = f"""  <p class="lede">{e(settings["description"])}
     <a href="{e(settings["repository_url"], quote=True)}" target="_blank" rel="noopener noreferrer">Copy the catalog builder</a>
     to publish your own.</p>
+  <section class="changes">
+    <h2>Latest changes</h2>
+    <ul>
+{change_items}
+    </ul>
+  </section>
   <div class="grid">
 {chr(10).join(tiles)}
   </div>
