@@ -28,9 +28,9 @@ or in [PSPDX](https://github.com/chriopter/pspdx) on your PSP.
 - **Required** → only `schema`, `source` (the repo URL) and `name`
 - **`tags`** → `game`, `emulator`, `app` and `demo` get a tab on the PSP
 - **`installdir`** → only if the folder isn't the repo name
-- **No `.pspdx` in the repo?** → put one up elsewhere with `listed_by` set,
-  and add its URL (ending in `.pspdx`) to `repos.txt`; the repo's own file
-  wins once it has one
+- **No `.pspdx` in the repo?** → this builder lists only repos with their
+  own; another catalog can list such an app by setting `listed_by` on its
+  entry
 
 All fields: [PSPDX standard](https://chriopter.github.io/pspdx/)
 
@@ -79,7 +79,7 @@ Keep the schema URLs as they are: they identify the shared formats.
 
 | File | Purpose |
 |---|---|
-| [`repos.txt`](repos.txt) | One repository per line; `@tag` pins a release; a `.pspdx` URL stands in for a repo without one |
+| [`repos.txt`](repos.txt) | One repository per line; `@tag` pins a release |
 | [`catalog.config.json`](catalog.config.json) | Catalog name and URLs |
 | [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) | Tests, builds and deploys |
 | [`.github/look.py`](.github/look.py) | Reads releases and builds the catalog |
