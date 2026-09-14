@@ -74,7 +74,7 @@ Keep the schema URLs as they are: they identify the shared formats.
 
 | File | Purpose |
 |---|---|
-| `catalog.json` | Fast browsing; [catalog schema](https://github.com/chriopter/pspdx/blob/master/schema/catalog-v1.json) |
+| `catalog.json` | Fast browsing; [catalog schema](https://chriopter.github.io/pspdx/schema/catalog-v1.json) |
 | `catalog.txt` | Copy of `repos.txt`; PSPDX falls back to it and asks the repos directly |
 | `index.html`, `catalog.html` | Browse page and readable catalog |
 | `apps/<id>/` | One page and the EBOOT media per app |

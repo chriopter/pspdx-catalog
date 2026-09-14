@@ -28,7 +28,7 @@ release and the EBOOT and never written by hand.
 
 Nothing but the standard library, on purpose: this runs in a workflow and
 should keep running in ten years. The `.pspdx` is checked by hand against the
-rules in schema/v1.pspdx rather than handed to a validator module, for the
+rules in schema/pspdx-v1.json rather than handed to a validator module, for the
 same reason, and because a reason that reads like a sentence is what an
 author needs to fix their file."""
 import concurrent.futures
@@ -66,15 +66,15 @@ WORKERS = 8
 
 # The catalog names itself: a file found on a stick years from now says where
 # it came from and which version of the format it is.
-SCHEMA = "https://github.com/chriopter/pspdx/blob/master/schema/catalog-v1.json"
+SCHEMA = "https://chriopter.github.io/pspdx/schema/catalog-v1.json"
 
 # What a .pspdx must say in its `schema` line to be a version 1 file. A
 # version 2 gets a new name, so an old file is never wrong, only old.
-PSPDX_SCHEMA = "https://github.com/chriopter/pspdx/blob/master/schema/v1.pspdx"
+PSPDX_SCHEMA = "https://chriopter.github.io/pspdx/schema/pspdx-v1.json"
 
 GITHUB = re.compile(r"https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?/?$")
 
-# The rules out of schema/v1.pspdx, by hand. The category is one word for
+# The rules out of schema/pspdx-v1.json, by hand. The category is one word for
 # what this one app is, and the install directory is matched whole, because
 # the schema's `$` is the end of the string and Python's is not quite.
 CATEGORIES = ("game", "emulator", "app", "plugin", "demo")
@@ -262,7 +262,7 @@ def repos(path):
 # --- the file ---------------------------------------------------------------
 
 def validate(data):
-    """The rules of schema/v1.pspdx, one at a time, and the first one broken
+    """The rules of schema/pspdx-v1.json, one at a time, and the first one broken
     as a Problem. Written out rather than fed to a validator so that the
     reason reads like a sentence: a misspelt key is named, a long summary
     says how long it may be."""
