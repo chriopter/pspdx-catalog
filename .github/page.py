@@ -179,6 +179,10 @@ TILE = """    <article class="app">
 HOME = "apps/{id}/"
 UP = "../../"
 
+# The format catalog.json follows. The standard's, not this catalog's, so a
+# copy rebranded through catalog.config.json still points at the same file.
+SCHEMA = "https://chriopter.github.io/pspdx/schema/catalog-v1.json"
+
 # What one PBP section is called on the page, and in which order the four are
 # listed. The names are Sony's, because that is what they are.
 ARTEFACTS = (("icon", "icon", "ICON0.PNG"),
@@ -242,10 +246,11 @@ def plain(app):
 
 def bar(base, *bits):
     """The line at the top right: a few marks, not a sentence. The catalog is
-    two small links, the braces for the page that prints it and the brackets
-    for the file itself."""
+    three small links, the braces for the page that prints it, the brackets
+    for the file itself, and the dollar of `$schema` for the rules it keeps."""
     marks = list(bits) + [f'<a href="{base}catalog.html">{{ }} catalog</a>',
-                          f'<a href="{base}catalog.json">[ ] json</a>']
+                          f'<a href="{base}catalog.json">[ ] json</a>',
+                          f'<a href="{SCHEMA}">$ schema</a>']
     return "".join(f"<span>{mark}</span>" for mark in marks)
 
 
