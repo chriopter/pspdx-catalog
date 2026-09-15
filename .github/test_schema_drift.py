@@ -132,6 +132,27 @@ CASES = [
     ("source pinned", but(source="https://github.com/chriopter/pspdx@v1"), False),
     ("source with a query", but(source="https://github.com/chriopter/pspdx?tab=readme"), False),
     ("source with a newline", but(source="https://github.com/chriopter/pspdx\n"), False),
+    # The owner and the repository as the console reads them: GitHub's lengths,
+    # a letter or digit in each for the id, and no .git.git to be read back as
+    # another repository.
+    ("source an owner of 39", but(source="https://github.com/" + "o" * 39 + "/pspdx"), True),
+    ("source an owner of 40", but(source="https://github.com/" + "o" * 40 + "/pspdx"), False),
+    ("source a repository of 100", but(source="https://github.com/chriopter/" + "r" * 100), True),
+    ("source a repository of 101", but(source="https://github.com/chriopter/" + "r" * 101), False),
+    ("source a repository of 100 with .git",
+     but(source="https://github.com/chriopter/" + "r" * 96 + ".git"), True),
+    ("source a repository of 101 with .git",
+     but(source="https://github.com/chriopter/" + "r" * 97 + ".git/"), False),
+    *[(f"source an owner {owner}", but(source=f"https://github.com/{owner}/pspdx"), False)
+      for owner in (".", "..", "-", "_.-")],
+    *[(f"source a repository {repo}", but(source=f"https://github.com/chriopter/{repo}"), False)
+      for repo in (".", "..", "_", "..git", "-.git", ".../")],
+    ("source a repository .git", but(source="https://github.com/chriopter/.git"), True),
+    ("source a repository -git", but(source="https://github.com/chriopter/-git"), True),
+    ("source ending .git.git", but(source="https://github.com/chriopter/pspdx.git.git"), False),
+    ("source ending .git.git/", but(source="https://github.com/chriopter/pspdx.git.git/"), False),
+    ("source a repository .git.git", but(source="https://github.com/chriopter/.git.git"), True),
+    ("source a repository Demo.", but(source="https://github.com/chriopter/Demo."), True),
     ("source a list", but(source=["https://github.com/chriopter/pspdx"]), False),
     ("name empty", but(name=""), False),
     ("name 39", but(name="n" * 39), True),
@@ -203,9 +224,46 @@ CASES = [
     ("listed_by 255", but(listed_by="https://" + "u" * 247), True),
     ("listed_by 256", but(listed_by="https://" + "u" * 248), False),
     ("listed_by a number", but(listed_by=1), False),
+    # The host makes the id outside GitHub, so it is ASCII with a letter or digit
+    # in every label, and nothing a browser would read as another host.
+    ("listed_by 例え.jp", but(listed_by="https://例え.jp/"), False),
+    ("listed_by xn--r8jz45g.jp", but(listed_by="https://xn--r8jz45g.jp/"), True),
+    ("listed_by who logs in and a port", but(listed_by="https://user@wijsman.de:8443/list"), True),
+    ("listed_by a query after the host", but(listed_by="https://wijsman.de?list#top"), True),
+    ("listed_by www.", but(listed_by="https://www.wijsman.de/"), True),
+    ("listed_by only www.", but(listed_by="https://www./list"), False),
+    ("listed_by a trailing dot", but(listed_by="https://wijsman.de./"), True),
+    ("listed_by an empty label", but(listed_by="https://wijsman..de/"), False),
+    ("listed_by a leading dot", but(listed_by="https://.wijsman.de/"), False),
+    ("listed_by a label of a hyphen", but(listed_by="https://-.wijsman.de/"), False),
+    ("listed_by a label of hyphens and a digit", but(listed_by="https://-1-.wijsman.de/"), True),
+    ("listed_by a backslash before the host",
+     but(listed_by="https://evil.example\\@wijsman.de/"), False),
+    ("listed_by a backslash in the path", but(listed_by="https://wijsman.de/a\\b"), False),
+    # Outside GitHub the host backwards starts the id, and io.github. is GitHub's.
+    ("listed_by under github.io, source on GitHub",
+     but(listed_by="https://chriopter.github.io/list/"), True),
+    *[(f"listed_by {where}, source elsewhere",
+       but(source="https://archive.org/details/psp-blocks", listed_by=where), False)
+      for where in ("https://chriopter.github.io/list/", "https://github.io", "https://github.io:443/",
+                    "https://WWW.GitHub.IO./", "https://git-hub.io?x", "https://a.b.github.io#top",
+                    "https://user@chriopter.github.io/")],
+    *[(f"listed_by {where}, source elsewhere",
+       but(source="https://archive.org/details/psp-blocks", listed_by=where), True)
+      for where in ("https://github.io.example.com/", "https://notgithub.io/", "https://github.com/",
+                    "https://io.github.example/", "https://x.github.io@wijsman.de/")],
     ("installdir with dots inside", but(installdir="PSP/GAME/Example-1.2_b"), True),
     ("installdir starting with a dot", but(installdir="PSP/GAME/.example"), True),
-    ("installdir three dots", but(installdir="PSP/GAME/..."), True),
+    ("installdir three dots", but(installdir="PSP/GAME/..."), False),
+    ("installdir Demo", but(installdir="PSP/GAME/Demo"), True),
+    ("installdir Demo.", but(installdir="PSP/GAME/Demo."), False),
+    ("installdir Demo_", but(installdir="PSP/GAME/Demo_"), True),
+    ("installdir 32 ending in a dot", but(installdir="PSP/GAME/" + "D" * 31 + "."), False),
+    ("installdir .pspdx-stage.", but(installdir="PSP/GAME/.pspdx-stage."), False),
+    ("no installdir from a repository ending in a dot",
+     without("installdir") | {"source": "https://github.com/chriopter/Demo."}, True),
+    ("no installdir from a name elsewhere ending in dots",
+     without("installdir") | {"source": "https://archive.org/details/psp-blocks", "name": "Demo..."}, True),
     ("installdir 32", but(installdir="PSP/GAME/" + "D" * 32), True),
     ("installdir 33", but(installdir="PSP/GAME/" + "D" * 33), False),
     ("installdir .", but(installdir="PSP/GAME/."), False),
@@ -246,6 +304,12 @@ CASES = [
      but(release={"tag": "v1", "published_at": "2026-09-12T00:00:00+02:00"}), False),
     ("release a date the calendar lacks", but(release={"tag": "v1", "published_at": "2026-02-30"}),
      False),
+    *[(f"release published {when}", but(release={"tag": "v1", "published_at": when}), valid)
+      for when, valid in (("2024-02-29", True), ("2023-02-29", False), ("2023-02-31", False),
+                          ("2024-02-29T12:00:00Z", True), ("2023-02-29T12:00:00Z", False),
+                          ("2023-02-31T12:00:00Z", False))],
+    ("release a url with a non-ASCII character",
+     but(release={"tag": "v1", "url": "https://example.com/d\u00e9mo.zip"}), False),
     ("release a url over http", but(release={"tag": "v1", "url": "http://example.com/a.zip"}), False),
     ("release a url of 512",
      but(release={"tag": "v1", "url": "https://example.com/" + "u" * 492}), True),
@@ -298,6 +362,38 @@ ENTRY_CASES = [
     ("an entry from elsewhere, a name of no letter or digit", dict(MIRROR, name="\u2605 \u2014 \u2605"), False),
     ("an entry from elsewhere, a name of one digit", dict(MIRROR, name="\u2605 2 \u2605"), True),
     ("an entry from elsewhere, listed_by empty", dict(MIRROR, listed_by=""), False),
+    ("an entry from elsewhere, listed under github.io",
+     dict(MIRROR, listed_by="https://chriopter.github.io/"), False),
+    ("an entry from GitHub, listed under github.io",
+     dict(ENTRY, listed_by="https://chriopter.github.io/"), True),
+    ("an entry from elsewhere, listed by 例え.jp", dict(MIRROR, listed_by="https://例え.jp/"), False),
+    ("an entry from elsewhere, listed by xn--r8jz45g.jp",
+     dict(MIRROR, listed_by="https://xn--r8jz45g.jp/"), True),
+    ("an entry from GitHub, an owner of 39",
+     dict(ENTRY, source="https://github.com/" + "o" * 39 + "/pspdx"), True),
+    ("an entry from GitHub, an owner of 40",
+     dict(ENTRY, source="https://github.com/" + "o" * 40 + "/pspdx"), False),
+    ("an entry from GitHub, a repository of 100",
+     dict(ENTRY, source="https://github.com/chriopter/" + "r" * 100), True),
+    ("an entry from GitHub, a repository of 101",
+     dict(ENTRY, source="https://github.com/chriopter/" + "r" * 101), False),
+    ("an entry from GitHub, ending .git.git",
+     dict(ENTRY, source="https://github.com/chriopter/pspdx.git.git"), False),
+    ("an entry installed to PSP/GAME/Demo", dict(ENTRY, installdir="PSP/GAME/Demo"), True),
+    ("an entry installed to PSP/GAME/Demo.", dict(ENTRY, installdir="PSP/GAME/Demo."), False),
+]
+
+
+# A time a catalog carries is one the calendar has: a release's, which may be
+# a bare date, and the catalog's own, which is a UTC second. look.moment is the
+# builder's word on a pinned release's.
+DATE_CASES = [
+    ("2024-02-29T12:00:00Z", True),
+    ("2023-02-29T12:00:00Z", False),
+    ("2023-02-31T00:00:00Z", False),
+    ("2024-02-29", True),
+    ("2023-02-29", False),
+    ("2023-02-31", False),
 ]
 
 
@@ -422,6 +518,18 @@ class SchemaDriftTests(unittest.TestCase):
                     said = str(problem)
                 self.assertEqual((not found, said == "accepted"), (valid, valid),
                                  f"schema: {found or 'accepted'}; look.py: {said}")
+
+    def test_a_catalog_dates_only_what_the_calendar_has(self):
+        for when, valid in DATE_CASES:
+            with self.subTest(when):
+                release = dict(RELEASE, published_at=when)
+                catalog = {"schema": look.SCHEMA, "generated_at": "2026-09-12T00:00:00Z",
+                           "apps": [dict(ENTRY, releases=[release])]}
+                found = check_schema.problems(catalog, self.catalog)
+                self.assertEqual((not found, look.moment(when)), (valid, valid), found)
+                if "T" in when:
+                    found = check_schema.problems(dict(catalog, generated_at=when), self.catalog)
+                    self.assertEqual(not found, valid, found)
 
     def test_a_catalog_names_its_entries_as_it_likes(self):
         for what, app, valid in ID_CASES:

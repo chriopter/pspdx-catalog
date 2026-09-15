@@ -81,15 +81,40 @@ SCHEMA = "https://chriopter.github.io/pspdx/schema/catalog-v1.json"
 # version 2 gets a new name, so an old file is never wrong, only old.
 PSPDX_SCHEMA = "https://chriopter.github.io/pspdx/schema/pspdx-v1.json"
 
-GITHUB = re.compile(r"https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?/?$")
+# A repository URL as the console reads one, matched whole: an owner of 1 to
+# 39 and a repository of 1 to 100 of [A-Za-z0-9_.-], a .git and a slash after
+# it allowed. Each needs a letter or digit, the repository besides the .git it
+# ends in, since the id is made of those; that also keeps out . and .. . And
+# <name>.git.git would be written back as <name>.git, another repository.
+# SHAPE is only the outline, so that `repository` can say which rule is broken.
+SHAPE = re.compile(r"https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)/?")
+GITHUB = re.compile(r"https://github\.com/(?=[._-]*[A-Za-z0-9])([A-Za-z0-9_.-]{1,39})/"
+                    r"(?=[._-]*[A-Za-z0-9])(?![._-]+\.git/?\Z)(?![A-Za-z0-9_.-]+\.git\.git/?\Z)"
+                    r"(?=[A-Za-z0-9_.-]{1,100}/?\Z)([A-Za-z0-9_.-]+?)(?:\.git)?/?")
 
 # The rules out of schema/pspdx-v1.json, by hand. The install directory is
 # matched whole, because the schema's `$` is the end of the string and
-# Python's is not quite. The folder is not . or .., and not .pspdx-stage in
-# any case: the client unpacks every install there first, and the stick does
-# not tell the cases apart. test_schema_drift.py holds these to the schema,
-# case by case.
-INSTALLDIR = re.compile(r"PSP/GAME/(?!(?:\.{1,2}|(?i:\.pspdx-stage))$)[A-Za-z0-9_.-]{1,32}")
+# Python's is not quite. The folder does not end in a dot, which FAT drops:
+# PSP/GAME/Demo. would be PSP/GAME/Demo on the stick, and PSP/GAME/.. the
+# folder above. It is not .pspdx-stage in any case: the client unpacks every
+# install there first, and the stick does not tell the cases apart.
+# test_schema_drift.py holds these to the schema, case by case.
+INSTALLDIR = re.compile(r"PSP/GAME/(?!(?i:\.pspdx-stage)\Z)[A-Za-z0-9_.-]{0,31}[A-Za-z0-9_-]")
+
+# The list that vouches for an app: an https:// URL whose host is ASCII with a
+# letter or digit in every label, since outside GitHub the id is made of them
+# and a label of none would drop out and leave another host's id. A name in
+# another script is written in punycode. Who logs in and the port may be
+# there; a backslash may not, since a browser reads it as a slash and the
+# host would be another. A host of only www. is none.
+LABEL = r"-*[A-Za-z0-9][A-Za-z0-9-]*"
+LISTED_BY = re.compile(r"https://(?:[^/?#\\\x00-\x1f]*@)?(?!(?i:www)\.(?:[:/?#]|\Z))"
+                       rf"(?:{LABEL}\.)*{LABEL}\.?(?::[0-9]*)?(?:[/?#][^\\\x00-\x1f]*)?")
+# io.github. starts the ids of GitHub repositories, so a list under github.io
+# gives none to an app from anywhere else, whose id its host backwards would
+# start. The dashes an id drops are passed over here too.
+GITHUB_IO = re.compile(r"https://(?:[^/?#\\]*@)?(?![^/?#\\]*@)(?:[A-Za-z0-9-]*\.)*"
+                       r"-*g-*i-*t-*h-*u-*b-*\.-*i-*o-*\.?(?:[:/?#]|\Z)", re.IGNORECASE)
 
 # What a file can be. A homebrew is an EBOOT under PSP/GAME and is the one
 # this catalog can check; the other two need other checks than a release with
@@ -201,6 +226,34 @@ def ident(owner, repo):
                                    for part in (owner, repo))
 
 
+def repository(source):
+    """The owner and repository of a source on github.com, as GITHUB reads
+    them, or the Problem that names the rule it breaks."""
+    shape = SHAPE.fullmatch(source)
+    if not shape:
+        raise Problem('.pspdx: "source" on github.com must be a repository URL, '
+                      "https://github.com/<owner>/<repository>")
+    owner, name = shape.groups()
+    if len(owner) > 39:
+        raise Problem(f'.pspdx: the owner in "source" is {len(owner)} characters, at most 39')
+    if len(name) > 100:
+        raise Problem(f'.pspdx: the repository in "source" is {len(name)} characters, at most 100')
+    if len(name) > 8 and name.endswith(".git.git"):
+        raise Problem('.pspdx: the repository in "source" ends in .git.git, which is written '
+                      "back without one .git as another repository")
+    if len(name) > 4 and name.endswith(".git"):
+        name = name[:-4]
+    for what, part in (("owner", owner), ("repository", name)):
+        if not plain(part):
+            raise Problem(f'.pspdx: the {what} in "source", {part!r}, has no letter or digit '
+                          "to make an id of")
+    found = GITHUB.fullmatch(source)
+    if not found:
+        raise Problem('.pspdx: "source" on github.com must be a repository URL, '
+                      "https://github.com/<owner>/<repository>")
+    return found.groups()
+
+
 def plain(text):
     """One part of an id: the letters and digits of text, in lower case. The
     ASCII ones only, stripped before the case is changed, so that a letter
@@ -223,14 +276,23 @@ def identity(spec):
     where = spec.get("listed_by", "")
     if not where.startswith("https://"):
         return None
-    host = re.split(r"[/?#]", where[len("https://"):], maxsplit=1)[0]
+    # A backslash ends the host as a slash does, the way a browser reads it.
+    host = re.split(r"[/?#\\]", where[len("https://"):], maxsplit=1)[0]
     # Who logs in and on which port are not part of the name.
     host = host.rsplit("@", 1)[-1].split(":", 1)[0]
     if host[:4].lower() == "www.":
         host = host[4:]
-    labels = [label for label in map(plain, host.split(".")[::-1]) if label]
+    labels = host.split(".")
+    # The empty label after a trailing dot is the only one that may drop out:
+    # any other label without a letter or digit would leave another host's id.
+    if len(labels) > 1 and not labels[-1]:
+        labels.pop()
+    labels = [plain(label) for label in labels[::-1]]
     name = plain(spec["name"])
-    return ".".join(labels + [name]) if labels and name else None
+    if not all(labels) or not name:
+        return None
+    one = ".".join(labels + [name])
+    return None if one.startswith("io.github.") else one
 
 
 def trim(text, limit=LIMITS["summary"]):
@@ -387,9 +449,8 @@ def validate(data):
     source = data["source"]
     if not source.startswith("https://") or source == "https://":
         raise Problem('.pspdx: "source" must be an https:// URL')
-    if source.startswith("https://github.com/") and not GITHUB.fullmatch(source):
-        raise Problem('.pspdx: "source" on github.com must be a repository URL, '
-                      "https://github.com/<owner>/<repository>")
+    if source.startswith("https://github.com/"):
+        repository(source)
     if not data["name"]:
         raise Problem('.pspdx: "name" is empty')
     # The category is the one group the app belongs in, a word like a tag;
@@ -409,9 +470,16 @@ def validate(data):
     kind = data.get("type", HOMEBREW)
     if kind not in TYPES:
         raise Problem('.pspdx: "type" is one of ' + ", ".join(TYPES))
-    if "listed_by" in data and (not data["listed_by"].startswith("https://")
-                                or data["listed_by"] == "https://"):
-        raise Problem('.pspdx: "listed_by" must be an https:// URL')
+    if "listed_by" in data:
+        where = data["listed_by"]
+        if not where.startswith("https://") or where == "https://":
+            raise Problem('.pspdx: "listed_by" must be an https:// URL')
+        if "\\" in where:
+            raise Problem('.pspdx: "listed_by" holds a backslash, which a browser reads as a slash')
+        if not LISTED_BY.fullmatch(where):
+            raise Problem('.pspdx: the host of "listed_by" is ASCII letters, digits and hyphens '
+                          "with a letter or digit in every label; a name in another script is "
+                          "written in punycode (xn--)")
     # Outside GitHub the id is the vouching list's host and the name, so a
     # file without either has no id and describes no app anyone could find.
     if not GITHUB.fullmatch(source):
@@ -420,6 +488,10 @@ def validate(data):
                           "whose host and the name make the id")
         if not plain(data["name"]):
             raise Problem('.pspdx: "name" has no letter or digit to make an id of')
+        if GITHUB_IO.match(data["listed_by"]):
+            raise Problem('.pspdx: "listed_by" is under github.io, and for a "source" outside '
+                          "GitHub its host would make an id under io.github., which only a GitHub "
+                          "repository has")
         if identity(data) is None:
             raise Problem('.pspdx: "listed_by" has no host to make an id of')
     if "release" in data:
@@ -430,7 +502,7 @@ def validate(data):
         if not isinstance(data["installdir"], str) \
                 or not INSTALLDIR.fullmatch(data["installdir"]):
             raise Problem('.pspdx: "installdir" is PSP/GAME/ and 1 to 32 of '
-                          "[A-Za-z0-9_.-], excluding ., .. and .pspdx-stage, in version 1")
+                          "[A-Za-z0-9_.-], not ending in a dot and not .pspdx-stage, in version 1")
     elif kind == HOMEBREW:
         installdir(data)
     return data
@@ -492,14 +564,14 @@ def installdir(spec):
     folder under PSP/GAME named after it and cut to the 32 characters a folder
     may have -- the repository's name from GitHub, which is spelt in the
     characters a folder holds already, and the app's name from anywhere else,
-    with every other character left out. A name that comes out empty, or as
-    ., .. or .pspdx-stage, has no folder it could go to, and the file then
-    has to say one."""
+    with every other character left out -- and without the dots it then ends
+    in, which FAT would drop. A name that comes out empty or as .pspdx-stage
+    has no folder it could go to, and the file then has to say one."""
     if "installdir" in spec:
         return spec["installdir"]
     found = GITHUB.fullmatch(spec["source"])
     name = found.group(2) if found else re.sub(r"[^A-Za-z0-9_.-]", "", spec["name"])
-    folder = "PSP/GAME/" + name[:32]
+    folder = "PSP/GAME/" + name[:32].rstrip(".")
     if not INSTALLDIR.fullmatch(folder):
         raise Problem(f'.pspdx: no "installdir", and {folder} cannot be one')
     return folder

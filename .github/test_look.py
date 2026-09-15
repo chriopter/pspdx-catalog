@@ -56,6 +56,16 @@ class CatalogRegressionTests(unittest.TestCase):
                      "https://example.com/" + "x" * 236):
             with self.subTest(repo=repo), self.assertRaisesRegex(look.Problem, "source"):
                 look.validate(dict(spec, source=repo))
+        # The owner and the repository name an id, so each needs a letter or a
+        # digit, and a repository ending .git.git reads back as another.
+        for repo, reason in (("https://github.com/./demo", "owner"),
+                             ("https://github.com/example/..", "repository"),
+                             ("https://github.com/example/_.git", "repository"),
+                             ("https://github.com/" + "o" * 40 + "/demo", "at most 39"),
+                             ("https://github.com/example/" + "r" * 101, "at most 100"),
+                             ("https://github.com/example/demo.git.git", ".git.git")):
+            with self.subTest(repo=repo), self.assertRaisesRegex(look.Problem, reason):
+                look.validate(dict(spec, source=repo))
         for repo in ("https://github.com/example/demo", "https://example.com/demo",
                      "https://archive.org/details/psp-blocks", "https://example.com/" + "x" * 235):
             with self.subTest(repo=repo):
@@ -67,7 +77,8 @@ class CatalogRegressionTests(unittest.TestCase):
                      if k != "installdir"}
         for name, folder in (("Example", "Example"), ("PSP Blocks: Deluxe!", "PSPBlocksDeluxe"),
                              ("Jeu de rôle 2", "Jeuderle2"), ("A-" * 19 + "B", ("A-" * 19)[:32]),
-                             ("v1.2_final", "v1.2_final")):
+                             ("v1.2_final", "v1.2_final"), ("Demo...", "Demo"),
+                             ("x" * 31 + ".y", "x" * 31)):
             with self.subTest(name=name):
                 self.assertEqual(look.installdir(look.validate(dict(elsewhere, name=name))),
                                  "PSP/GAME/" + folder)
@@ -95,18 +106,31 @@ class CatalogRegressionTests(unittest.TestCase):
                 ({"listed_by": "https://user@psp-lists.example.co.uk:8443?x#y"},
                  "uk.co.example.psplists.blocks"),
                 ({"listed_by": "https://www./list"}, None),
+                ({"listed_by": "https://wijsman.de./"}, "de.wijsman.blocks"),
+                ({"listed_by": "https://xn--r8jz45g.jp/"}, "jp.xnr8jz45g.blocks"),
+                ({"listed_by": "https://例え.jp/"}, None),
+                ({"listed_by": "https://wijsman..de/"}, None),
+                ({"listed_by": "https://evil.example\\@wijsman.de/"}, "example.evil.blocks"),
+                ({"listed_by": "https://example.github.io/"}, None),
+                ({"listed_by": "https://www.Git-Hub.IO./"}, None),
                 ({"name": "★ ★"}, None)):
             with self.subTest(changes=changes):
                 self.assertEqual(look.identity(dict(spec, **changes)), expected)
         look.validate(spec)
         for changes, reason in (({"listed_by": None}, "needs \"listed_by\""),
                                 ({"name": "★ ★"}, "no letter or digit"),
-                                ({"listed_by": "https://-/"}, "no host")):
+                                ({"listed_by": "https://-/"}, "host of"),
+                                ({"listed_by": "https://例え.jp/"}, "punycode"),
+                                ({"listed_by": "https://evil.example\\@wijsman.de/"}, "backslash"),
+                                ({"listed_by": "https://example.github.io/"}, "github.io")):
             with self.subTest(changes=changes), self.assertRaisesRegex(look.Problem, reason):
                 look.validate({k: v for k, v in dict(spec, **changes).items() if v is not None})
-        # A GitHub source needs no list: its id is the repository.
+        # A GitHub source needs no list: its id is the repository, and so a list
+        # under github.io may vouch for it.
         look.validate({k: v for k, v in dict(spec, source="https://github.com/a/b").items()
                        if k != "listed_by"})
+        look.validate(dict(spec, source="https://github.com/a/b",
+                           listed_by="https://example.github.io/"))
 
     def test_a_source_outside_github_is_left_out_with_the_reason(self):
         spec = {"source": "https://archive.org/details/psp-blocks"}
@@ -239,7 +263,8 @@ class CatalogRegressionTests(unittest.TestCase):
         spec = {"schema": look.PSPDX_SCHEMA, "name": "Example",
                 "source": "https://github.com/example/demo",
                 "tags": ["demo"]}
-        for folder in (".", "..", "../Other", "Example\n", ".pspdx-stage", ".PSPDX-Stage"):
+        for folder in (".", "..", "...", "Demo.", "../Other", "Example\n", ".pspdx-stage",
+                       ".PSPDX-Stage"):
             with self.subTest(folder=folder), self.assertRaises(look.Problem):
                 look.validate(dict(spec, installdir="PSP/GAME/" + folder))
         for folder in ("PSPDXDemo", "Example-1.2", ".example", "A" * 32):
@@ -251,14 +276,16 @@ class CatalogRegressionTests(unittest.TestCase):
         for source, folder in (("https://github.com/example/demo", "demo"),
                                ("https://github.com/example/Demo-1.2.git/", "Demo-1.2"),
                                ("https://github.com/example/" + "r" * 40, "r" * 32),
-                               ("https://github.com/example/" + "a" * 32 + ".git", "a" * 32)):
+                               ("https://github.com/example/" + "a" * 32 + ".git", "a" * 32),
+                               ("https://github.com/example/Demo.", "Demo"),
+                               ("https://github.com/example/" + "a" * 31 + ".b", "a" * 31)):
             with self.subTest(source=source):
                 file = look.validate(dict(spec, source=source))
                 self.assertNotIn("installdir", file)
                 self.assertEqual(look.installdir(file), "PSP/GAME/" + folder)
                 self.assertEqual(look.installdir(dict(file, installdir="PSP/GAME/Other")),
                                  "PSP/GAME/Other")
-        for repo in (".", "..", ".pspdx-stage", ".PSPDX-STAGE"):
+        for repo in (".pspdx-stage", ".PSPDX-STAGE", ".pspdx-stage."):
             with self.subTest(repo=repo):
                 source = "https://github.com/example/" + repo
                 with self.assertRaisesRegex(look.Problem, "cannot be one"):
@@ -267,7 +294,7 @@ class CatalogRegressionTests(unittest.TestCase):
 
     def test_other_types_take_no_install_directory(self):
         spec = {"schema": look.PSPDX_SCHEMA, "name": "Example",
-                "source": "https://github.com/example/.."}
+                "source": "https://github.com/example/.pspdx-stage"}
         for kind in ("plugin", "iso"):
             with self.subTest(kind=kind):
                 look.validate(dict(spec, type=kind))
@@ -456,10 +483,10 @@ class PinsListingsAndZipsTests(unittest.TestCase):
             look.api, look.read_pspdx, look.package = saved
         return app, log, asked, fetched
 
-    def listed_file(self, directory, name, data):
+    def listed_file(self, directory, name, data, settings=None):
         path = pathlib.Path(directory) / name
         path.write_text(json.dumps(data))
-        return look.read_listed(str(path), config.load())
+        return look.read_listed(str(path), settings or config.load())
 
     SPEC = {"schema": look.PSPDX_SCHEMA, "name": "Demo", "source": "https://github.com/example/demo"}
 
@@ -555,20 +582,27 @@ class PinsListingsAndZipsTests(unittest.TestCase):
                 "source": "https://archive.org/details/psp-blocks",
                 "release": {"tag": "1.0", "url": "https://archive.org/download/psp-blocks/blocks.zip",
                             "published_at": "2011-05-04"}}
+        # The id outside GitHub starts with the catalog's host backwards, so a
+        # catalog served under github.io, as this one is, cannot list such an
+        # app: its id would be under io.github., which is GitHub's.
+        site = "https://psp.example.org/list/"
+        settings = dict(config.load(), site_url=site)
         with tempfile.TemporaryDirectory() as directory:
-            listed = self.listed_file(directory, "blocks.pspdx", spec)
+            with self.assertRaisesRegex(look.Problem, "github.io"):
+                self.listed_file(directory, "blocks.pspdx", spec,
+                                 dict(settings, site_url="https://example.github.io/other/"))
+            listed = self.listed_file(directory, "blocks.pspdx", spec, settings)
             with self.assertRaisesRegex(look.Problem, 'outside GitHub pins its "release"'):
                 self.listed_file(directory, "bare.pspdx",
-                                 dict(spec, release={"tag": "1.0"}))
+                                 dict(spec, release={"tag": "1.0"}), settings)
             with self.assertRaisesRegex(look.Problem, '"listed_by" is this catalog'):
                 self.listed_file(directory, "other.pspdx",
-                                 dict(spec, listed_by="https://example.com/"))
+                                 dict(spec, listed_by="https://example.com/"), settings)
         app, log, asked, fetched = self.run_entry(None, [], listed=listed)
         self.assertEqual(asked, [])
         self.assertEqual(fetched, [spec["release"]["url"]])
-        expected_id = look.identity(dict(spec, listed_by=self.SITE))
         self.assertEqual((app["id"], app["listed_by"], app["installdir"]),
-                         (expected_id, self.SITE, "PSP/GAME/PSPBlocks"))
+                         ("org.example.psp.pspblocks", site, "PSP/GAME/PSPBlocks"))
         self.assertEqual(app["releases"], [{"tag": "1.0", "published_at": "2011-05-04",
                                             "url": spec["release"]["url"], "size": 99,
                                             "sha256": "a" * 64, "eboot_md5": "5" * 32}])
