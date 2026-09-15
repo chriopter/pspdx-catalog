@@ -32,7 +32,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Only the schema check needs a module, and it gets its own
       # environment; look.py keeps running on the bare python3.
@@ -63,13 +63,13 @@ jobs:
         run: |
           "$RUNNER_TEMP/venv/bin/python" .github/check_schema.py site/catalog.json
 
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
         if: steps.look.outputs.changed == 'yes'
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         if: steps.look.outputs.changed == 'yes'
         with:
           path: site
-      - uses: actions/deploy-pages@v4
+      - uses: actions/deploy-pages@v5
         id: deployment
         if: steps.look.outputs.changed == 'yes'
 
