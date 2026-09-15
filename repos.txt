@@ -3,7 +3,7 @@
 # it goes, the repository says itself, in the .pspdx in its root:
 # https://chriopter.github.io/pspdx/schema/pspdx-v1.json
 
-https://github.com/chriopter/pspdx
+https://github.com/chriopter/pspdx-app
 https://github.com/chriopter/pspdx-demo
 https://github.com/chriopter/psp-rust-raytracer
 https://github.com/chriopter/psp-graphicsdemo
