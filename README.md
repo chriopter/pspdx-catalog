@@ -3,8 +3,8 @@
 Browse PSP homebrew on the **[catalog website →](https://chriopter.github.io/pspdx-catalog/)**
 or in [PSPDX](https://github.com/chriopter/pspdx) on your PSP.
 
-Apps implementing the [PSPDX standard](https://chriopter.github.io/pspdx/),
-collected in one catalog every hour.
+An example catalog using the [PSPDX standard](https://chriopter.github.io/pspdx/),
+rebuilt every hour.
 
 ## Add your app
 
