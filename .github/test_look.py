@@ -48,7 +48,6 @@ class CatalogRegressionTests(unittest.TestCase):
                 "tags": ["demo"], "installdir": "PSP/GAME/Example"}
         with self.assertRaisesRegex(look.Problem, "source"):
             look.validate(spec)
-        spec["listed_by"] = "https://wijsman.de/psp-homebrew-database/"
         for repo in (None, 12, "", "example/demo", "http://github.com/example/demo",
                      "http://example.com/demo", "https://", "ftp://example.com/demo",
                      "https://github.com/example/demo\n", "https://example.com/demo\n",
@@ -72,8 +71,7 @@ class CatalogRegressionTests(unittest.TestCase):
                 look.validate(dict(spec, source=repo))
         # Outside GitHub there is no repository name, and the folder is the
         # app's name in the characters a folder may hold.
-        elsewhere = {k: v for k, v in dict(spec, source="https://example.com/demo",
-                                           listed_by="https://example.com/").items()
+        elsewhere = {k: v for k, v in dict(spec, source="https://example.com/demo").items()
                      if k != "installdir"}
         for name, folder in (("Example", "Example"), ("PSP Blocks: Deluxe!", "PSPBlocksDeluxe"),
                              ("Jeu de rôle 2", "Jeuderle2"), ("A-" * 19 + "B", ("A-" * 19)[:32]),
@@ -87,50 +85,42 @@ class CatalogRegressionTests(unittest.TestCase):
                 look.validate(dict(elsewhere, name=name))
         look.validate(dict(elsewhere, name=".pspdx-stage", installdir="PSP/GAME/Stage"))
         look.validate({"schema": look.PSPDX_SCHEMA, "name": "Example", "type": "plugin",
-                       "source": "https://example.com/demo",
-                       "listed_by": "https://example.com/"})
+                       "source": "https://example.com/demo"})
 
-    def test_the_id_outside_github_is_the_list_and_the_name(self):
+    def test_the_id_outside_github_is_the_host_and_the_name(self):
         spec = {"schema": look.PSPDX_SCHEMA, "name": "Blocks", "installdir": "PSP/GAME/Blocks",
-                "source": "https://archive.org/details/psp-blocks",
-                "listed_by": "https://wijsman.de/psp-homebrew-database/"}
+                "source": "https://wijsman.de/psp-homebrew-database/blocks"}
         for changes, expected in (
                 ({"source": "https://github.com/example/demo"}, "io.github.example.demo"),
                 ({"source": "https://github.com/Example/Demo-1.2.git/"}, "io.github.example.demo12"),
-                ({"source": "https://github.com/example/demo", "listed_by": "https://x.org/"},
-                 "io.github.example.demo"),
                 ({}, "de.wijsman.blocks"),
                 ({"name": "PSP Blocks 2 (Deluxe)"}, "de.wijsman.pspblocks2deluxe"),
                 ({"name": "Blöcke"}, "de.wijsman.blcke"),
-                ({"listed_by": "https://WWW.Wijsman.de"}, "de.wijsman.blocks"),
-                ({"listed_by": "https://user@psp-lists.example.co.uk:8443?x#y"},
+                ({"source": "https://WWW.Wijsman.de"}, "de.wijsman.blocks"),
+                ({"source": "https://user@psp-lists.example.co.uk:8443?x#y"},
                  "uk.co.example.psplists.blocks"),
-                ({"listed_by": "https://www./list"}, None),
-                ({"listed_by": "https://wijsman.de./"}, "de.wijsman.blocks"),
-                ({"listed_by": "https://xn--r8jz45g.jp/"}, "jp.xnr8jz45g.blocks"),
-                ({"listed_by": "https://例え.jp/"}, None),
-                ({"listed_by": "https://wijsman..de/"}, None),
-                ({"listed_by": "https://evil.example\\@wijsman.de/"}, "example.evil.blocks"),
-                ({"listed_by": "https://example.github.io/"}, None),
-                ({"listed_by": "https://www.Git-Hub.IO./"}, None),
+                ({"source": "https://www./list"}, None),
+                ({"source": "https://wijsman.de./"}, "de.wijsman.blocks"),
+                ({"source": "https://xn--r8jz45g.jp/"}, "jp.xnr8jz45g.blocks"),
+                ({"source": "https://例え.jp/"}, None),
+                ({"source": "https://wijsman..de/"}, None),
+                ({"source": "https://evil.example\\@wijsman.de/"}, "example.evil.blocks"),
+                ({"source": "https://example.github.io/"}, None),
+                ({"source": "https://www.Git-Hub.IO./"}, None),
+                ({"source": "https://www.github.com/example/demo"}, "com.github.blocks"),
                 ({"name": "★ ★"}, None)):
             with self.subTest(changes=changes):
                 self.assertEqual(look.identity(dict(spec, **changes)), expected)
         look.validate(spec)
-        for changes, reason in (({"listed_by": None}, "needs \"listed_by\""),
-                                ({"name": "★ ★"}, "no letter or digit"),
-                                ({"listed_by": "https://-/"}, "host of"),
-                                ({"listed_by": "https://例え.jp/"}, "punycode"),
-                                ({"listed_by": "https://evil.example\\@wijsman.de/"}, "backslash"),
-                                ({"listed_by": "https://example.github.io/"}, "github.io")):
+        for changes, reason in (({"name": "★ ★"}, "no letter or digit"),
+                                ({"source": "https://-/"}, "host of"),
+                                ({"source": "https://例え.jp/"}, "punycode"),
+                                ({"source": "https://evil.example\\@wijsman.de/"}, "backslash"),
+                                ({"source": "https://example.github.io/"}, "github.io")):
             with self.subTest(changes=changes), self.assertRaisesRegex(look.Problem, reason):
-                look.validate({k: v for k, v in dict(spec, **changes).items() if v is not None})
-        # A GitHub source needs no list: its id is the repository, and so a list
-        # under github.io may vouch for it.
-        look.validate({k: v for k, v in dict(spec, source="https://github.com/a/b").items()
-                       if k != "listed_by"})
-        look.validate(dict(spec, source="https://github.com/a/b",
-                           listed_by="https://example.github.io/"))
+                look.validate(dict(spec, **changes))
+        # A GitHub source's id is the repository, so its name needs no letter.
+        look.validate(dict(spec, source="https://github.com/a/b", name="★ ★"))
 
     def test_a_source_outside_github_is_left_out_with_the_reason(self):
         spec = {"source": "https://archive.org/details/psp-blocks"}
@@ -197,7 +187,6 @@ class CatalogRegressionTests(unittest.TestCase):
                "summary": "Short & sweet", "type": "homebrew", "tags": ["game", "<b>tag</b>"],
                "license": "MIT", "installdir": "PSP/GAME/demo",
                "description": 'First <script>alert("x")</script> & more\nSecond line\n\nThird',
-               "listed_by": 'https://user@Wijsman.de:8443/psp?a=1&b="2"',
                "website": "https://example.com/demo?a=1&b=2",
                "media": {"screenshots": [home + "picture-1.png", home + "picture-2.png",
                                          "https://example.com/shot.png"]},
@@ -215,8 +204,6 @@ class CatalogRegressionTests(unittest.TestCase):
                           text)
             self.assertIn("Second line<br>\n    <br>\n    Third</p>", text)
             self.assertNotIn("<script>alert", text)
-            self.assertIn('Listed by <a href="https://user@Wijsman.de:8443/psp?a=1&amp;b=&quot;2&quot;" '
-                          'target="_blank" rel="noopener noreferrer">wijsman.de</a>', text)
             self.assertIn('<a href="https://example.com/demo?a=1&amp;b=2" target="_blank" '
                           'rel="noopener noreferrer">example.com</a>', text)
             self.assertIn("by example &middot; homebrew &middot; game, &lt;b&gt;tag&lt;/b&gt; "
@@ -229,9 +216,9 @@ class CatalogRegressionTests(unittest.TestCase):
 
             # Without them the page says nothing about them.
             bare = {k: v for k, v in app.items()
-                    if k not in ("description", "listed_by", "website", "media", "type", "tags")}
+                    if k not in ("description", "website", "media", "type", "tags")}
             text = page.app_page(bare, directory, config.load())
-            for absent in ("Listed by", 'class="description"', "Website", 'class="shots"'):
+            for absent in ('class="description"', "Website", 'class="shots"'):
                 self.assertNotIn(absent, text)
             self.assertIn("by example &middot; MIT", text)
 
@@ -402,14 +389,12 @@ class CatalogRegressionTests(unittest.TestCase):
     def test_entry_carries_the_new_fields_and_the_derived_directory(self):
         spec = {"schema": look.PSPDX_SCHEMA, "name": "Example",
                 "source": "https://github.com/example/demo",
-                "description": "Two lines.\nThe second.",
-                "listed_by": "https://wijsman.de/psp-homebrew-database/"}
+                "description": "Two lines.\nThe second."}
         app, _ = self.entry_with(spec)
         self.assertEqual(app["installdir"], "PSP/GAME/demo")
         self.assertNotIn("tags", app)
         self.assertNotIn("type", app)
         self.assertEqual(app["description"], spec["description"])
-        self.assertEqual(app["listed_by"], spec["listed_by"])
         app, _ = self.entry_with(dict(spec, type="homebrew", tags=["Jeu de rôle", "game"],
                                       installdir="PSP/GAME/Example"))
         self.assertEqual((app["type"], app["tags"], app["installdir"]),
@@ -437,8 +422,6 @@ class PinsListingsAndZipsTests(unittest.TestCase):
     """GitHub is answered from here throughout: api by path, the repository's
     own .pspdx by whether the test gives one, and a package that is only its
     title and a hash of its URL."""
-    SITE = config.load()["site_url"]
-
     @staticmethod
     def release(tag, when, names=("demo.zip",), **more):
         return dict({"tag_name": tag, "published_at": when,
@@ -494,11 +477,9 @@ class PinsListingsAndZipsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             listed = self.listed_file(directory, "demo-example.pspdx",
                                       dict(self.SPEC, summary="Listed words"))
-        self.assertEqual(listed["spec"]["listed_by"], self.SITE)
         app, log, _, fetched = self.run_entry(None, [self.release("v1", "2026-01-01T00:00:00Z")],
                                               listed=listed)
-        self.assertEqual((app["id"], app["listed_by"], app["summary"]),
-                         ("io.github.example.demo", self.SITE, "Listed words"))
+        self.assertEqual((app["id"], app["summary"]), ("io.github.example.demo", "Listed words"))
         self.assertEqual(app["_raw"], listed["raw"])
         self.assertTrue(app["_pspdx"].endswith("/blob/HEAD/listed/demo-example.pspdx"))
         self.assertEqual(len(fetched), 1)
@@ -516,7 +497,6 @@ class PinsListingsAndZipsTests(unittest.TestCase):
                                         [self.release("v1", "2026-01-01T00:00:00Z")],
                                         listed=listed)
         self.assertEqual(app["name"], "Own")
-        self.assertNotIn("listed_by", app)
         self.assertTrue(any("listed/demo.pspdx is redundant" in line for line in log), log)
 
     def test_a_pinned_release_is_the_only_one_even_with_newer_ones(self):
@@ -582,27 +562,28 @@ class PinsListingsAndZipsTests(unittest.TestCase):
                 "source": "https://archive.org/details/psp-blocks",
                 "release": {"tag": "1.0", "url": "https://archive.org/download/psp-blocks/blocks.zip",
                             "published_at": "2011-05-04"}}
-        # The id outside GitHub starts with the catalog's host backwards, so a
-        # catalog served under github.io, as this one is, cannot list such an
-        # app: its id would be under io.github., which is GitHub's.
-        site = "https://psp.example.org/list/"
-        settings = dict(config.load(), site_url=site)
+        # The id outside GitHub starts with the source's host backwards, so a
+        # source under github.io has none: it would be under io.github., which
+        # is GitHub's.
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaisesRegex(look.Problem, "github.io"):
-                self.listed_file(directory, "blocks.pspdx", spec,
-                                 dict(settings, site_url="https://example.github.io/other/"))
-            listed = self.listed_file(directory, "blocks.pspdx", spec, settings)
+                self.listed_file(directory, "blocks.pspdx",
+                                 dict(spec, source="https://example.github.io/blocks"))
+            listed = self.listed_file(directory, "blocks.pspdx", spec)
             with self.assertRaisesRegex(look.Problem, 'outside GitHub pins its "release"'):
-                self.listed_file(directory, "bare.pspdx",
-                                 dict(spec, release={"tag": "1.0"}), settings)
-            with self.assertRaisesRegex(look.Problem, '"listed_by" is this catalog'):
-                self.listed_file(directory, "other.pspdx",
-                                 dict(spec, listed_by="https://example.com/"), settings)
+                self.listed_file(directory, "bare.pspdx", dict(spec, release={"tag": "1.0"}))
+            with self.assertRaisesRegex(look.Problem, "after the start of 1970"):
+                self.listed_file(directory, "old.pspdx",
+                                 dict(spec, release=dict(spec["release"], published_at="1970-01-01")))
+            # A field version 1 does not name, as listed_by once was, is passed over.
+            self.assertEqual(self.listed_file(directory, "old.pspdx",
+                                              dict(spec, listed_by="https://example.com/"))["spec"],
+                             listed["spec"])
         app, log, asked, fetched = self.run_entry(None, [], listed=listed)
         self.assertEqual(asked, [])
         self.assertEqual(fetched, [spec["release"]["url"]])
-        self.assertEqual((app["id"], app["listed_by"], app["installdir"]),
-                         ("org.example.psp.pspblocks", site, "PSP/GAME/PSPBlocks"))
+        self.assertNotIn("listed_by", app)
+        self.assertEqual((app["id"], app["installdir"]), ("org.archive.pspblocks", "PSP/GAME/PSPBlocks"))
         self.assertEqual(app["releases"], [{"tag": "1.0", "published_at": "2011-05-04",
                                             "url": spec["release"]["url"], "size": 99,
                                             "sha256": "a" * 64, "eboot_md5": "5" * 32}])

@@ -63,7 +63,6 @@ h1 a { color: inherit; text-decoration: none; }
 .hero h2 { margin: 0 0 3px; font-size: 28px; font-weight: 550; letter-spacing: -.035em; line-height: 1.2; }
 .hero .who { font-size: 12px; color: var(--dim); }
 .hero p { margin: 10px 0 0; color: var(--dim); }
-.hero .listed { margin-top: 6px; }
 .description { max-width: 72ch; padding: 0 0 28px; overflow-wrap: anywhere; }
 .description p { margin: 0; }
 .hero .actions { flex-shrink: 0; }
@@ -457,8 +456,7 @@ def origins(app, out):
     said = []
     for field, what in (("name", "name"), ("author", "author"),
                         ("summary", "summary"), ("type", "type"), ("tags", "tags"),
-                        ("license", "licence"), ("installdir", "installdir"),
-                        ("listed_by", "listed by")):
+                        ("license", "licence"), ("installdir", "installdir")):
         # Tags are the author's to give or not, so an entry may have none.
         value = app.get(field, "")
         value = e(", ".join(value) if isinstance(value, list) else value) \
@@ -536,10 +534,6 @@ def app_page(app, out, settings):
                                           e(app.get("type", "")),
                                           e(", ".join(app.get("tags", []))),
                                           e(app.get("license", ""))) if x)
-    # The list that vouches for the app, by the name a person knows it by.
-    listed = (f'\n      <div class="who listed">Listed by <a href="{e(app["listed_by"])}" '
-              f'target="_blank" rel="noopener noreferrer">{e(host(app["listed_by"]))}</a></div>'
-              if app.get("listed_by") else "")
     # The author's own words, as plain text: every line of it a line here,
     # and nothing in it read as markup.
     description = ""
@@ -575,7 +569,7 @@ def app_page(app, out, settings):
     <div>
       <h2>{e(app["name"])}</h2>
       <div class="who">{about}</div>
-      <p>{e(app.get("summary", ""))}</p>{listed}
+      <p>{e(app.get("summary", ""))}</p>
     </div>
   </div>
 {description}  <div class="detail-columns">

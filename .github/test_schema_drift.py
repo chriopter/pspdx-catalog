@@ -32,7 +32,7 @@ DIRECTORY = os.environ.get("PSPDX_SCHEMA_DIR")
 # repeated by its rule alone: the file may leave it out, the catalog may not,
 # and each schema says which in its own description.
 FIELDS = ("name", "author", "summary", "type", "category", "tags", "license", "description",
-          "listed_by", "source")
+          "source")
 SAME_RULE = ("installdir",)
 # The fields only a file has: a pinned release becomes the catalog's
 # releases, which the builder fills in.
@@ -50,7 +50,6 @@ FULL = {
     "license": "GPL-2.0-only",
     "installdir": "PSP/GAME/PSPDX",
     "description": "Download, run and update homebrew on your PSP.\n\nFrom GitHub.",
-    "listed_by": "https://wijsman.de/psp-homebrew-database/",
 }
 MINIMAL = {key: FULL[key] for key in look.REQUIRED}
 PLUGIN = {k: v for k, v in dict(FULL, type="plugin").items() if k != "installdir"}
@@ -65,9 +64,24 @@ def without(key):
 
 
 # Cases the schema refuses but every reader accepts: only keys the format
-# does not name, which readers pass over.
+# does not name, which readers pass over; listed_by is one version 1 no longer has.
 IGNORED_BY_READERS = {"an unknown key", "a key in another case", "release with an unknown key",
-                      "release with a size"}
+                      "release with a size", "listed_by"}
+
+# A release is dated after the start of 1970, where a console's seconds begin,
+# and 0 is no time. The catalog's own generated_at is not held to it.
+EPOCH_CASES = [
+    ("0001-01-01", False),
+    ("1900-06-01T12:00:00Z", False),
+    ("1969-12-31", False),
+    ("1969-12-31T23:59:59Z", False),
+    ("1970-01-01", False),
+    ("1970-01-01T00:00:00Z", False),
+    ("1970-01-01T00:00:01Z", True),
+    ("1970-01-02", True),
+    ("1971-01-01", True),
+    ("1999-12-31T23:59:59Z", True),
+]
 
 # (what it is, the file, whether it is a valid .pspdx)
 CASES = [
@@ -75,6 +89,7 @@ CASES = [
     ("only the required fields", MINIMAL, True),
     ("empty optional strings", but(author="", summary="", license="", description=""), True),
     ("an unknown key", but(version="1.0"), False),
+    ("listed_by", but(listed_by="https://wijsman.de/psp-homebrew-database/"), False),
     ("a key in another case", dict(MINIMAL, Name="PSPDX"), False),
     *[(f"no {key}", without(key), False) for key in look.REQUIRED],
     *[(f"no {key}", without(key), True)
@@ -115,8 +130,6 @@ CASES = [
      without("installdir") | {"source": "https://example.com/x", "type": "homebrew"}, True),
     ("source elsewhere, a plugin", dict(PLUGIN, source="https://example.com/plugin"), True),
     ("source elsewhere with a tab", but(source="https://example.com/a\tb"), False),
-    ("source elsewhere without listed_by",
-     without("listed_by") | {"source": "https://archive.org/details/psp-blocks"}, False),
     ("source elsewhere, a name of no letter or digit",
      but(source="https://archive.org/details/psp-blocks", name="★ — ★"), False),
     ("source elsewhere, a name of one digit",
@@ -214,43 +227,25 @@ CASES = [
     ("name with a carriage return", but(name="PSP\rDX"), False),
     ("summary with unit separator", but(summary="a\x1fb"), False),
     ("name with DEL", but(name="PSP\x7fDX"), True),
-    ("listed_by https", but(listed_by="https://example.com/"), True),
-    ("listed_by http", but(listed_by="http://wijsman.de/psp-homebrew-database/"), False),
-    ("listed_by only the scheme", but(listed_by="https://"), False),
-    ("listed_by empty", but(listed_by=""), False),
-    ("listed_by no scheme", but(listed_by="wijsman.de/psp-homebrew-database/"), False),
-    ("listed_by HTTPS in capitals", but(listed_by="HTTPS://wijsman.de/"), False),
-    ("listed_by with a newline", but(listed_by="https://wijsman.de/\n"), False),
-    ("listed_by 255", but(listed_by="https://" + "u" * 247), True),
-    ("listed_by 256", but(listed_by="https://" + "u" * 248), False),
-    ("listed_by a number", but(listed_by=1), False),
-    # The host makes the id outside GitHub, so it is ASCII with a letter or digit
-    # in every label, and nothing a browser would read as another host.
-    ("listed_by 例え.jp", but(listed_by="https://例え.jp/"), False),
-    ("listed_by xn--r8jz45g.jp", but(listed_by="https://xn--r8jz45g.jp/"), True),
-    ("listed_by who logs in and a port", but(listed_by="https://user@wijsman.de:8443/list"), True),
-    ("listed_by a query after the host", but(listed_by="https://wijsman.de?list#top"), True),
-    ("listed_by www.", but(listed_by="https://www.wijsman.de/"), True),
-    ("listed_by only www.", but(listed_by="https://www./list"), False),
-    ("listed_by a trailing dot", but(listed_by="https://wijsman.de./"), True),
-    ("listed_by an empty label", but(listed_by="https://wijsman..de/"), False),
-    ("listed_by a leading dot", but(listed_by="https://.wijsman.de/"), False),
-    ("listed_by a label of a hyphen", but(listed_by="https://-.wijsman.de/"), False),
-    ("listed_by a label of hyphens and a digit", but(listed_by="https://-1-.wijsman.de/"), True),
-    ("listed_by a backslash before the host",
-     but(listed_by="https://evil.example\\@wijsman.de/"), False),
-    ("listed_by a backslash in the path", but(listed_by="https://wijsman.de/a\\b"), False),
-    # Outside GitHub the host backwards starts the id, and io.github. is GitHub's.
-    ("listed_by under github.io, source on GitHub",
-     but(listed_by="https://chriopter.github.io/list/"), True),
-    *[(f"listed_by {where}, source elsewhere",
-       but(source="https://archive.org/details/psp-blocks", listed_by=where), False)
+    # Outside GitHub the source's host makes the id, so it is ASCII with a letter
+    # or digit in every label, and nothing a browser would read as another host.
+    *[(f"source elsewhere {where}", but(source=where), valid)
+      for where, valid in (("https://例え.jp/blocks", False), ("https://xn--r8jz45g.jp/blocks", True),
+                           ("https://user@wijsman.de:8443/list", True),
+                           ("https://wijsman.de?list#top", True), ("https://www.wijsman.de/", True),
+                           ("https://www./list", False), ("https://WWW./list", False),
+                           ("https://www.", False), ("https://wijsman.de./", True),
+                           ("https://wijsman..de/", False), ("https://.wijsman.de/", False),
+                           ("https://-.wijsman.de/", False), ("https://-1-.wijsman.de/", True),
+                           ("https://evil.example\\@wijsman.de/", False),
+                           ("https://wijsman.de/a\\b", False), ("https://" + "u" * 247, True))],
+    # The host backwards starts the id, and io.github. is GitHub's.
+    *[(f"source elsewhere {where}", but(source=where), False)
       for where in ("https://chriopter.github.io/list/", "https://github.io", "https://github.io:443/",
                     "https://WWW.GitHub.IO./", "https://git-hub.io?x", "https://a.b.github.io#top",
                     "https://user@chriopter.github.io/")],
-    *[(f"listed_by {where}, source elsewhere",
-       but(source="https://archive.org/details/psp-blocks", listed_by=where), True)
-      for where in ("https://github.io.example.com/", "https://notgithub.io/", "https://github.com/",
+    *[(f"source elsewhere {where}", but(source=where), True)
+      for where in ("https://github.io.example.com/", "https://notgithub.io/",
                     "https://io.github.example/", "https://x.github.io@wijsman.de/")],
     ("installdir with dots inside", but(installdir="PSP/GAME/Example-1.2_b"), True),
     ("installdir starting with a dot", but(installdir="PSP/GAME/.example"), True),
@@ -308,6 +303,9 @@ CASES = [
       for when, valid in (("2024-02-29", True), ("2023-02-29", False), ("2023-02-31", False),
                           ("2024-02-29T12:00:00Z", True), ("2023-02-29T12:00:00Z", False),
                           ("2023-02-31T12:00:00Z", False))],
+    # A console counts seconds from the start of 1970, and 0 is no time.
+    *[(f"release published {when}", but(release={"tag": "v1", "published_at": when}), valid)
+      for when, valid in EPOCH_CASES],
     ("release a url with a non-ASCII character",
      but(release={"tag": "v1", "url": "https://example.com/d\u00e9mo.zip"}), False),
     ("release a url over http", but(release={"tag": "v1", "url": "http://example.com/a.zip"}), False),
@@ -336,39 +334,33 @@ CASES = [
 ]
 
 
-# A catalog entry keeps the file's rule for a source outside GitHub: the list
-# that vouches for it and a name with a letter or a digit, since those two make
-# its id. The entry is judged by the catalog schema, and the file it would be
+# A catalog entry keeps the file's rule for a source outside GitHub: a host and
+# a name with a letter or a digit, since those two make its id. The entry is judged by the catalog schema, and the file it would be
 # built from by look.py, and the two must agree with the table.
 RELEASE = {"tag": "v1.0", "published_at": "2026-09-12T00:00:00Z",
            "url": "https://github.com/chriopter/pspdx/releases/download/v1.0/pspdx.zip",
            "size": 1, "sha256": "0" * 64}
 ENTRY = {"id": "io.github.chriopter.pspdx", "source": "https://github.com/chriopter/pspdx",
          "name": "PSPDX", "releases": [RELEASE]}
-MIRROR = dict(ENTRY, id="de.wijsman.pspblocks", source="https://archive.org/details/psp-blocks",
-              name="PSP Blocks", listed_by="https://wijsman.de/psp-homebrew-database/")
-UNLISTED = {k: v for k, v in MIRROR.items() if k != "listed_by"}
+MIRROR = dict(ENTRY, id="org.archive.pspblocks", source="https://archive.org/details/psp-blocks",
+              name="PSP Blocks")
 
 ENTRY_CASES = [
     ("an entry from GitHub", ENTRY, True),
-    ("an entry from GitHub, listed by a list", dict(ENTRY, listed_by="https://wijsman.de/"), True),
     ("an entry from GitHub, a name of no letter or digit", dict(ENTRY, name="\u2605 \u2014 \u2605"), True),
     ("an entry from elsewhere", MIRROR, True),
-    ("an entry from elsewhere without listed_by", UNLISTED, False),
-    ("an entry on GitLab without listed_by",
-     dict(UNLISTED, source="https://gitlab.com/chriopter/pspdx"), False),
-    ("an entry on www.github.com without listed_by",
-     dict(UNLISTED, source="https://www.github.com/chriopter/pspdx"), False),
+    # A catalog from before listed_by went still carries it, and stays valid.
+    ("an entry from elsewhere, still with listed_by",
+     dict(MIRROR, listed_by="https://wijsman.de/psp-homebrew-database/"), True),
+    ("an entry on GitLab", dict(MIRROR, source="https://gitlab.com/chriopter/pspdx"), True),
+    ("an entry on www.github.com", dict(MIRROR, source="https://www.github.com/chriopter/pspdx"),
+     True),
     ("an entry from elsewhere, a name of no letter or digit", dict(MIRROR, name="\u2605 \u2014 \u2605"), False),
     ("an entry from elsewhere, a name of one digit", dict(MIRROR, name="\u2605 2 \u2605"), True),
-    ("an entry from elsewhere, listed_by empty", dict(MIRROR, listed_by=""), False),
-    ("an entry from elsewhere, listed under github.io",
-     dict(MIRROR, listed_by="https://chriopter.github.io/"), False),
-    ("an entry from GitHub, listed under github.io",
-     dict(ENTRY, listed_by="https://chriopter.github.io/"), True),
-    ("an entry from elsewhere, listed by 例え.jp", dict(MIRROR, listed_by="https://例え.jp/"), False),
-    ("an entry from elsewhere, listed by xn--r8jz45g.jp",
-     dict(MIRROR, listed_by="https://xn--r8jz45g.jp/"), True),
+    ("an entry under github.io", dict(MIRROR, source="https://chriopter.github.io/blocks"), False),
+    ("an entry from 例え.jp", dict(MIRROR, source="https://例え.jp/blocks"), False),
+    ("an entry from xn--r8jz45g.jp", dict(MIRROR, source="https://xn--r8jz45g.jp/blocks"), True),
+    ("an entry with a backslash", dict(MIRROR, source="https://evil.example\\@wijsman.de/"), False),
     ("an entry from GitHub, an owner of 39",
      dict(ENTRY, source="https://github.com/" + "o" * 39 + "/pspdx"), True),
     ("an entry from GitHub, an owner of 40",
@@ -503,7 +495,7 @@ class SchemaDriftTests(unittest.TestCase):
                          [rule for rule in self.pspdx["allOf"]
                           if not any(f'"{field}"' in json.dumps(rule) for field in FILE_ONLY)])
 
-    def test_a_catalog_entry_from_outside_github_names_its_list(self):
+    def test_a_catalog_entry_from_outside_github_is_named_by_its_host(self):
         for what, app, valid in ENTRY_CASES:
             with self.subTest(what):
                 catalog = {"schema": look.SCHEMA, "generated_at": "2026-09-12T00:00:00Z",
@@ -520,14 +512,14 @@ class SchemaDriftTests(unittest.TestCase):
                                  f"schema: {found or 'accepted'}; look.py: {said}")
 
     def test_a_catalog_dates_only_what_the_calendar_has(self):
-        for when, valid in DATE_CASES:
+        for when, valid in DATE_CASES + EPOCH_CASES:
             with self.subTest(when):
                 release = dict(RELEASE, published_at=when)
                 catalog = {"schema": look.SCHEMA, "generated_at": "2026-09-12T00:00:00Z",
                            "apps": [dict(ENTRY, releases=[release])]}
                 found = check_schema.problems(catalog, self.catalog)
                 self.assertEqual((not found, look.moment(when)), (valid, valid), found)
-                if "T" in when:
+                if "T" in when and (when, valid) in DATE_CASES:
                     found = check_schema.problems(dict(catalog, generated_at=when), self.catalog)
                     self.assertEqual(not found, valid, found)
 

@@ -28,8 +28,7 @@ author's consent and their words; everything that changes is derived from the
 release and the EBOOT and never written by hand.
 
 A repository without a `.pspdx` can still be listed, by this catalog and on
-its word: a `.pspdx` for it in `listed/`, and the entry says `listed_by` this
-catalog. The moment the repository has a file of its own, that file is read
+its word: a `.pspdx` for it in `listed/`. The moment the repository has a file of its own, that file is read
 and the listed one is redundant.
 
 A `.pspdx` may pin a release with `release`: then that release and no other
@@ -101,18 +100,17 @@ GITHUB = re.compile(r"https://github\.com/(?=[._-]*[A-Za-z0-9])([A-Za-z0-9_.-]{1
 # test_schema_drift.py holds these to the schema, case by case.
 INSTALLDIR = re.compile(r"PSP/GAME/(?!(?i:\.pspdx-stage)\Z)[A-Za-z0-9_.-]{0,31}[A-Za-z0-9_-]")
 
-# The list that vouches for an app: an https:// URL whose host is ASCII with a
-# letter or digit in every label, since outside GitHub the id is made of them
-# and a label of none would drop out and leave another host's id. A name in
-# another script is written in punycode. Who logs in and the port may be
-# there; a backslash may not, since a browser reads it as a slash and the
-# host would be another. A host of only www. is none.
+# A source outside GitHub: an https:// URL whose host is ASCII with a letter
+# or digit in every label, since there the id is made of them and a label of
+# none would drop out and leave another host's id. A name in another script
+# is written in punycode. Who logs in and the port may be there; a backslash
+# may not, since a browser reads it as a slash and the host would be another.
+# A host of only www. is none.
 LABEL = r"-*[A-Za-z0-9][A-Za-z0-9-]*"
-LISTED_BY = re.compile(r"https://(?:[^/?#\\\x00-\x1f]*@)?(?!(?i:www)\.(?:[:/?#]|\Z))"
+HOST = re.compile(r"https://(?:[^/?#\\\x00-\x1f]*@)?(?!(?i:www)\.(?:[:/?#]|\Z))"
                        rf"(?:{LABEL}\.)*{LABEL}\.?(?::[0-9]*)?(?:[/?#][^\\\x00-\x1f]*)?")
-# io.github. starts the ids of GitHub repositories, so a list under github.io
-# gives none to an app from anywhere else, whose id its host backwards would
-# start. The dashes an id drops are passed over here too.
+# io.github. starts the ids of GitHub repositories, so a source under
+# github.io, whose host backwards would start its id, gives none. The dashes an id drops are passed over here too.
 GITHUB_IO = re.compile(r"https://(?:[^/?#\\]*@)?(?![^/?#\\]*@)(?:[A-Za-z0-9-]*\.)*"
                        r"-*g-*i-*t-*h-*u-*b-*\.-*i-*o-*\.?(?:[:/?#]|\Z)", re.IGNORECASE)
 
@@ -128,10 +126,10 @@ HOMEBREW = "homebrew"
 # line of a 480 pixel screen, and a list's address fits the URL slot the
 # console has for every other address.
 KEYS = ("schema", "source", "name", "type", "category", "tags", "installdir", "summary",
-        "author", "license", "description", "listed_by", "release")
+        "author", "license", "description", "release")
 REQUIRED = ("schema", "source", "name")
 LIMITS = {"source": 255, "name": 40, "category": 24, "summary": 60, "author": 60,
-          "license": 60, "description": 2500, "listed_by": 255}
+          "license": 60, "description": 2500}
 
 # What a pinned release may say, and how long its link may be: the rules of a
 # catalog's release, since it becomes one. The size and the hashes are no part
@@ -139,6 +137,7 @@ LIMITS = {"source": 255, "name": 40, "category": 24, "summary": 60, "author": 60
 RELEASE_KEYS = ("tag", "url", "published_at")
 URL = 512
 URI = re.compile(r"https://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]+")
+# A release is dated after the start of 1970, where a console's seconds begin.
 WHEN = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}(T[0-9]{2}:[0-9]{2}:[0-9]{2}Z)?")
 
 # The folder of .pspdx files this catalog keeps for repositories that have none.
@@ -266,14 +265,13 @@ def identity(spec):
     """The id of the app a valid .pspdx describes, or None when it cannot
     have one. A GitHub repository is io.github.<owner>.<repo>, which is what
     every id already published is. Anywhere else the address says too little
-    about which project it is -- a mirror moves, and one page lists many --
-    so the id is the list that vouches for the app and the app's name: the
-    host of listed_by backwards, as a reverse domain name is written, without
-    the www. nobody means, and the name after it."""
+    about which project it is -- one site holds many -- so the id is the
+    source's host and the app's name: the host backwards, as a reverse domain
+    name is written, without the www. nobody means, and the name after it."""
     found = GITHUB.fullmatch(spec["source"])
     if found:
         return ident(*found.groups())
-    where = spec.get("listed_by", "")
+    where = spec["source"]
     if not where.startswith("https://"):
         return None
     # A backslash ends the host as a slash does, the way a browser reads it.
@@ -470,30 +468,23 @@ def validate(data):
     kind = data.get("type", HOMEBREW)
     if kind not in TYPES:
         raise Problem('.pspdx: "type" is one of ' + ", ".join(TYPES))
-    if "listed_by" in data:
-        where = data["listed_by"]
-        if not where.startswith("https://") or where == "https://":
-            raise Problem('.pspdx: "listed_by" must be an https:// URL')
-        if "\\" in where:
-            raise Problem('.pspdx: "listed_by" holds a backslash, which a browser reads as a slash')
-        if not LISTED_BY.fullmatch(where):
-            raise Problem('.pspdx: the host of "listed_by" is ASCII letters, digits and hyphens '
+    # Outside GitHub the id is the source's host and the name, so a file
+    # without either has no id and describes no app anyone could find.
+    if not GITHUB.fullmatch(source):
+        if "\\" in source:
+            raise Problem('.pspdx: "source" outside GitHub holds a backslash, which a browser '
+                          "reads as a slash")
+        if not HOST.fullmatch(source):
+            raise Problem('.pspdx: the host of "source" is ASCII letters, digits and hyphens '
                           "with a letter or digit in every label; a name in another script is "
                           "written in punycode (xn--)")
-    # Outside GitHub the id is the vouching list's host and the name, so a
-    # file without either has no id and describes no app anyone could find.
-    if not GITHUB.fullmatch(source):
-        if "listed_by" not in data:
-            raise Problem('.pspdx: a "source" outside GitHub needs "listed_by", '
-                          "whose host and the name make the id")
         if not plain(data["name"]):
             raise Problem('.pspdx: "name" has no letter or digit to make an id of')
-        if GITHUB_IO.match(data["listed_by"]):
-            raise Problem('.pspdx: "listed_by" is under github.io, and for a "source" outside '
-                          "GitHub its host would make an id under io.github., which only a GitHub "
-                          "repository has")
+        if GITHUB_IO.match(source):
+            raise Problem('.pspdx: "source" is under github.io, and outside GitHub its host '
+                          "would make an id under io.github., which only a GitHub repository has")
         if identity(data) is None:
-            raise Problem('.pspdx: "listed_by" has no host to make an id of')
+            raise Problem('.pspdx: "source" has no host to make an id of')
     if "release" in data:
         data["release"] = pinned(data["release"], GITHUB.fullmatch(source) is not None)
     if "installdir" in data:
@@ -525,7 +516,7 @@ def pinned(pin, github):
         raise Problem(f'.pspdx: release "url" is an https:// URL of at most {URL} characters')
     if "published_at" in pin and not moment(pin["published_at"]):
         raise Problem('.pspdx: release "published_at" is a UTC time like '
-                      "2024-12-20T14:03:00Z, or a date like 2024-12-20")
+                      "2024-12-20T14:03:00Z, or a date like 2024-12-20, after the start of 1970")
     if not github and not {"url", "published_at"} <= set(pin):
         raise Problem('.pspdx: a "source" outside GitHub pins its "release" '
                       'with "url" and "published_at"')
@@ -534,14 +525,15 @@ def pinned(pin, github):
 
 def moment(text):
     """Whether text is a published_at a catalog may carry: a UTC second with
-    its Z, or a bare date, and one the calendar has."""
+    its Z, or a bare date, one the calendar has and after the start of 1970:
+    a console counts seconds from then, and 0 is no time."""
     if not isinstance(text, str) or not WHEN.fullmatch(text):
         return False
     try:
-        datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ" if "T" in text else "%Y-%m-%d")
+        when = datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ" if "T" in text else "%Y-%m-%d")
     except ValueError:
         return False
-    return True
+    return when.replace(tzinfo=timezone.utc).timestamp() > 0
 
 
 def ignored(raw):
@@ -965,14 +957,12 @@ def entry(url, owner, repo, tag, known, listed=None):
     # The same version published at the same second is the same release, and
     # the same release is the same package: what the catalog says about it
     # cannot have changed without the author publishing again. A pin keeps
-    # one release, so an entry with a history is not the pinned one, and an
-    # entry vouched for by another list is not this one.
+    # one release, so an entry with a history is not the pinned one.
     history_was = (known or {}).get("releases") or [{}]
     was = history_was[0]
     if (known and was.get("tag") == latest["tag_name"] and was.get("published_at") == when
             and was.get("url") == asset.get("browser_download_url")
-            and (not fixed or len(history_was) == 1)
-            and known.get("listed_by") == spec.get("listed_by")):
+            and (not fixed or len(history_was) == 1)):
         return again(known, where, page_url), [f"unchanged, {latest['tag_name']}"]
 
     meta = api(f"/repos/{owner}/{repo}", "repository")
@@ -1030,8 +1020,8 @@ def entry(url, owner, repo, tag, known, listed=None):
         "source": url,
         "name": spec["name"],
         # The words nothing stands in for: a file that gives no tags, no
-        # type, no category, no description or no list is an entry without
-        # them, not one with a guess.
+        # type, no category or no description is an entry without them, not
+        # one with a guess.
         **{key: spec[key] for key in ("type", "category", "tags") if key in spec},
         # Always there for a homebrew, derived where the file said nothing,
         # so that a console reading the catalog never has to know the rule.
@@ -1039,7 +1029,7 @@ def entry(url, owner, repo, tag, known, listed=None):
         "summary": spec.get("summary", trim(meta.get("description") or "")),
         "author": spec.get("author", owner),
         "license": spec.get("license", spdx),
-        **{key: spec[key] for key in ("description", "listed_by") if key in spec},
+        **({"description": spec["description"]} if "description" in spec else {}),
         **({"website": website} if website else {}),
         "releases": history,
         "_media": media,
@@ -1080,8 +1070,7 @@ def elsewhere(listed, known):
     was_all = (known or {}).get("releases") or [{}]
     was = was_all[0]
     if (known and len(was_all) == 1 and was.get("tag") == pin["tag"]
-            and was.get("published_at") == when and was.get("url") == pin["url"]
-            and known.get("listed_by") == spec.get("listed_by")):
+            and was.get("published_at") == when and was.get("url") == pin["url"]):
         return again(known, listed["link"], spec["source"]), [f"unchanged, {pin['tag']}"]
     name = urllib.parse.unquote(pin["url"].split("?", 1)[0].rsplit("/", 1)[-1]) or "the zip"
     asset = {"name": name, "size": None, "browser_download_url": pin["url"]}
@@ -1099,7 +1088,7 @@ def elsewhere(listed, known):
         # Nothing to fall back on out here: what the file does not say, the
         # entry says empty.
         **{key: spec.get(key, "") for key in ("summary", "author", "license")},
-        **{key: spec[key] for key in ("description", "listed_by") if key in spec},
+        **({"description": spec["description"]} if "description" in spec else {}),
         "releases": [published({"tag_name": pin["tag"]}, when, asset, sha, md5)],
         "_media": media,
         "_raw": listed["raw"],
@@ -1117,10 +1106,8 @@ def elsewhere(listed, known):
 def read_listed(path, settings):
     """One file out of listed/, as entry and elsewhere take it, or the Problem
     that keeps it out. It is held to the rules a repository's .pspdx is held
-    to, and it is this catalog's word, so its listed_by is this catalog: left
-    out it is filled in, and another list's is a mistake."""
+    to."""
     name = f"{LISTED}/{os.path.basename(path)}"
-    site = settings["site_url"]
     listed = {"name": name,
               "link": (settings["repository_url"] + "/blob/HEAD/" + LISTED + "/"
                        + urllib.parse.quote(os.path.basename(path)))}
@@ -1134,10 +1121,6 @@ def read_listed(path, settings):
         raise Problem(f"{name} is not UTF-8") from None
     except ValueError as e:
         raise Problem(f"{name} is not JSON: {e}") from None
-    if isinstance(data, dict):
-        if data.get("listed_by", site) != site:
-            raise Problem(f'{name}: "listed_by" is this catalog, {site}, or left out')
-        data = dict(data, listed_by=site)
     try:
         spec = validate(data)
     except Problem as ex:
