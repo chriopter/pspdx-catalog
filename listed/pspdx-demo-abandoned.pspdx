@@ -1,0 +1,11 @@
+{
+  "schema": "https://chriopter.github.io/pspdx/schema/pspdx-v1.json",
+  "source": "https://github.com/chriopter/pspdx-demo-abandoned",
+  "name": "PSPDX Abandoned Demo",
+  "category": "demo",
+  "summary": "Hello, PSP. A homebrew without a .pspdx, listed anyway.",
+  "author": "chriopter",
+  "license": "MIT",
+  "installdir": "PSP/GAME/PSPDXAbandoned",
+  "release": {"tag": "v1.0.0"}
+}

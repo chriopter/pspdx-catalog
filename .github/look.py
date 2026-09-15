@@ -6,6 +6,7 @@ whoever lands on the site.
     look.py                    read repos.txt, write site/
     look.py --list <file>      another list
     look.py --out <dir>        write the site somewhere else
+    look.py --listed <dir>     another folder of listed files
 
     LIVE=<url>                 the published catalog.json, which is the memory
     FORCE=1                    forget it and read everything again
@@ -25,6 +26,14 @@ An app is a GitHub repository that says so: a `.pspdx` file in its root, and
 a release that carries one zip with an EBOOT.PBP in it. The file is the
 author's consent and their words; everything that changes is derived from the
 release and the EBOOT and never written by hand.
+
+A repository without a `.pspdx` can still be listed, by this catalog and on
+its word: a `.pspdx` for it in `listed/`, and the entry says `listed_by` this
+catalog. The moment the repository has a file of its own, that file is read
+and the listed one is redundant.
+
+A `.pspdx` may pin a release with `release`: then that release and no other
+is listed, and nothing newer is looked for until the file changes.
 
 Nothing but the standard library, on purpose: this runs in a workflow and
 should keep running in ten years. The `.pspdx` is checked by hand against the
@@ -94,10 +103,21 @@ HOMEBREW = "homebrew"
 # line of a 480 pixel screen, and a list's address fits the URL slot the
 # console has for every other address.
 KEYS = ("schema", "source", "name", "type", "category", "tags", "installdir", "summary",
-        "author", "license", "description", "listed_by")
+        "author", "license", "description", "listed_by", "release")
 REQUIRED = ("schema", "source", "name")
 LIMITS = {"source": 255, "name": 40, "category": 24, "summary": 60, "author": 60,
           "license": 60, "description": 2500, "listed_by": 255}
+
+# What a pinned release may say, and how long its link may be: the rules of a
+# catalog's release, since it becomes one. The size and the hashes are no part
+# of it; the builder computes them and a hand never writes them.
+RELEASE_KEYS = ("tag", "url", "published_at")
+URL = 512
+URI = re.compile(r"https://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]+")
+WHEN = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}(T[0-9]{2}:[0-9]{2}:[0-9]{2}Z)?")
+
+# The folder of .pspdx files this catalog keeps for repositories that have none.
+LISTED = "listed"
 
 # Tags say what an app is in as many words as it takes, up to eight, each a
 # word or two long; the console makes a tab of the ones it knows.
@@ -402,6 +422,8 @@ def validate(data):
             raise Problem('.pspdx: "name" has no letter or digit to make an id of')
         if identity(data) is None:
             raise Problem('.pspdx: "listed_by" has no host to make an id of')
+    if "release" in data:
+        data["release"] = pinned(data["release"], GITHUB.fullmatch(source) is not None)
     if "installdir" in data:
         if kind != HOMEBREW:
             raise Problem(f'.pspdx: "installdir" is only for type homebrew, not {kind}')
@@ -414,6 +436,42 @@ def validate(data):
     return data
 
 
+def pinned(pin, github):
+    """A `release` as validate keeps it: the known keys, each held to its
+    rule. On GitHub the tag is enough, and the release says the rest; anywhere
+    else nothing can be asked, so the file says where the zip is and when it
+    was published."""
+    if not isinstance(pin, dict):
+        raise Problem('.pspdx: "release" is an object with a "tag"')
+    pin = {key: value for key, value in pin.items() if key in RELEASE_KEYS}
+    tag = pin.get("tag")
+    if not isinstance(tag, str) or not 1 <= len(tag) <= 64 or CONTROL.search(tag):
+        raise Problem('.pspdx: "release" needs a "tag" of 1 to 64 characters '
+                      "and no control character")
+    if "url" in pin and not (isinstance(pin["url"], str) and len(pin["url"]) <= URL
+                             and URI.fullmatch(pin["url"])):
+        raise Problem(f'.pspdx: release "url" is an https:// URL of at most {URL} characters')
+    if "published_at" in pin and not moment(pin["published_at"]):
+        raise Problem('.pspdx: release "published_at" is a UTC time like '
+                      "2024-12-20T14:03:00Z, or a date like 2024-12-20")
+    if not github and not {"url", "published_at"} <= set(pin):
+        raise Problem('.pspdx: a "source" outside GitHub pins its "release" '
+                      'with "url" and "published_at"')
+    return pin
+
+
+def moment(text):
+    """Whether text is a published_at a catalog may carry: a UTC second with
+    its Z, or a bare date, and one the calendar has."""
+    if not isinstance(text, str) or not WHEN.fullmatch(text):
+        return False
+    try:
+        datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ" if "T" in text else "%Y-%m-%d")
+    except ValueError:
+        return False
+    return True
+
+
 def ignored(raw):
     """The keys of a .pspdx that are no field of version 1, in the order the
     file has them: what validate passed over, for the log."""
@@ -421,7 +479,12 @@ def ignored(raw):
         data = json.loads(raw.decode("utf-8") if isinstance(raw, bytes) else raw)
     except ValueError:
         return []
-    return [key for key in data if key not in KEYS] if isinstance(data, dict) else []
+    if not isinstance(data, dict):
+        return []
+    pin = data.get("release")
+    return ([key for key in data if key not in KEYS]
+            + [f"release.{key}" for key in (pin if isinstance(pin, dict) else ())
+               if key not in RELEASE_KEYS])
 
 
 def installdir(spec):
@@ -567,11 +630,18 @@ def package(asset, log):
     What it has to say goes on `log` rather than to the screen: several of
     these run at once, and a log with two repositories talking over each
     other is no log."""
-    if asset["size"] > MAX_ASSET:
+    if asset["size"] is None:
+        # Outside GitHub nobody said how big it is before: it is as big as
+        # what arrives, up to the cap, and that is the size the catalog says.
+        log.append(f"fetching {asset['browser_download_url']}")
+        raw = fetch(asset["browser_download_url"], MAX_ASSET, asset["name"])
+        asset["size"] = len(raw)
+    elif asset["size"] > MAX_ASSET:
         raise Problem(f"{asset['name']} is {asset['size']} bytes, "
                       f"over the {MAX_ASSET} cap")
-    log.append(f"fetching {asset['name']}, {asset['size']} bytes")
-    raw = fetch(asset["browser_download_url"], asset["size"], asset["name"])
+    else:
+        log.append(f"fetching {asset['name']}, {asset['size']} bytes")
+        raw = fetch(asset["browser_download_url"], asset["size"], asset["name"])
     # GitHub says how big the asset is before it is fetched, so a short or a
     # padded answer is caught here rather than as a puzzling zip error.
     if len(raw) != asset["size"]:
@@ -630,7 +700,7 @@ def pictures(sections):
 
 # --- one entry --------------------------------------------------------------
 
-def again(known, ref, owner, repo, release):
+def again(known, where, release_page):
     """The entry out of the published catalog, word for word, and no media
     yet: `complete` fetches the published files after the list is walked.
 
@@ -638,8 +708,8 @@ def again(known, ref, owner, repo, release):
     read the day this entry was written, so re-reading the .pspdx and the zip
     would cost another ZIP download; manifest-only edits await a forced run."""
     app = dict(known)
-    app["_pspdx"] = raw_url(owner, repo, ref, ".pspdx")
-    app["_page"] = release.get("html_url", app["source"] + "/releases")
+    app["_pspdx"] = where
+    app["_page"] = release_page
     # No `_said`: which fields the author wrote and which fell back to GitHub
     # is in the .pspdx, which was not read. The page shows no origin for them
     # rather than guessing at one.
@@ -670,40 +740,57 @@ def served(known):
     return media, raw
 
 
-def dated(release):
+def dated(release, pinned=False):
     """When a release was published, as the catalog writes it, or the Problem
     that keeps it out: a draft, a pre-release, no date, a date past what a
     console's unsigned seconds hold, or a tag the console cannot make a
-    version of."""
+    version of. A pinned release may be a pre-release: somebody chose it by name."""
     if not isinstance(release, dict) or not isinstance(release.get("tag_name"), str):
         raise Problem("GitHub answered with something other than a release")
     tag = release["tag_name"]
-    if release.get("draft") or release.get("prerelease"):
+    if release.get("draft") or (release.get("prerelease") and not pinned):
         raise Problem(f"{tag} is a draft or a pre-release")
     try:
         published = datetime.fromisoformat(
             release["published_at"].replace("Z", "+00:00"))
     except (KeyError, TypeError, ValueError, AttributeError):
         raise Problem(f"{tag} has no published_at") from None
-    if not tag or tag == "v" or len(tag) > 64 or CONTROL.search(tag):
-        raise Problem("release tag must be 1 to 64 characters and not just v")
+    check_tag(tag)
     if not 0 < published.timestamp() < 2**32:
         raise Problem(f"{tag}: publication time is outside the PSPDX v1 range")
     return published.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def the_zip(release):
-    """The one zip on a release. One release is one package: two zips are a
-    question for the author, and the run cannot guess which is the install."""
-    zips = [a for a in release.get("assets") or []
-            if isinstance(a, dict) and str(a.get("name", "")).lower().endswith(".zip")]
+def check_tag(tag):
+    """A tag the console can make a version of."""
+    if not tag or tag == "v" or len(tag) > 64 or CONTROL.search(tag):
+        raise Problem("release tag must be 1 to 64 characters and not just v")
+
+
+def the_zip(release, url=None):
+    """The zip on a release that is the PSP package: the one zip, or of
+    several the one with psp in its name, in any case. One release is one
+    package, so anything else is a question for the author, and the run
+    cannot guess which is the install. A pin that gives its url names the
+    asset itself."""
+    assets = [a for a in release.get("assets") or [] if isinstance(a, dict)]
+    if url is not None:
+        for asset in assets:
+            if asset.get("browser_download_url") == url:
+                return asset
+        raise Problem(f"{release['tag_name']} has no asset at {url}")
+    zips = [a for a in assets if str(a.get("name", "")).lower().endswith(".zip")]
     if not zips:
         raise Problem(f"{release['tag_name']} has no zip attached")
-    if len(zips) > 1:
-        raise Problem(f"{release['tag_name']} has {len(zips)} zips: "
-                      + ", ".join(a["name"] for a in zips)
-                      + "; one release is one package")
-    return zips[0]
+    if len(zips) == 1:
+        return zips[0]
+    psp = [a for a in zips if "psp" in str(a["name"]).lower()]
+    if len(psp) == 1:
+        return psp[0]
+    raise Problem(f"{release['tag_name']} has {len(zips)} zips: "
+                  + ", ".join(a["name"] for a in zips)
+                  + f"; {len(psp) or 'none'} with psp in the name, "
+                  "and one release is one package")
 
 
 def changelog(body):
@@ -729,23 +816,55 @@ def published(release, when, asset, sha, md5):
             **({"changelog": notes} if notes else {})}
 
 
-def entry(url, owner, repo, tag, known):
+def entry(url, owner, repo, tag, known, listed=None):
     """The app as the catalog carries it and the lines the log should show
     for it, or a Problem saying why it is not listed. `known` is what the
     published catalog says about this id, and is used when the newest release
-    it names is still the newest GitHub names.
+    it names is still the newest GitHub names. `listed` is a file out of
+    listed/ for a repository that has no .pspdx of its own.
 
     Several of these run at once, so it says nothing itself: what it has to
     report it hands back, and the caller prints it in the list's order."""
     log = []
     ref = tag or "HEAD"
-    # The releases first, because they are the cheap question that decides
-    # whether any of the expensive ones have to be asked at all. One request
-    # either way: a pinned tag is that release and no other, and otherwise
-    # the list, of which the drafts and the pre-releases are no part.
-    if tag:
-        releases = [api(f"/repos/{owner}/{repo}/releases/tags/{urllib.parse.quote(tag)}",
-                        "release")]
+    where = raw_url(owner, repo, ref, ".pspdx")
+    # The file first: it is one request to raw.githubusercontent.com, which
+    # counts against no limit, and it says whether a release is pinned and so
+    # which release the rest is about.
+    if listed:
+        try:
+            spec, raw = read_pspdx(owner, repo, "HEAD")
+        except Problem as ex:
+            if str(ex) != "no .pspdx":
+                raise
+            spec, raw, where = listed["spec"], listed["raw"], listed["link"]
+        else:
+            # The repository's own file is the author's word, and it wins.
+            log.append(f"{listed['name']} is redundant: the repository has its own "
+                       ".pspdx, which is used")
+    else:
+        spec, raw = read_pspdx(owner, repo, ref)
+    check_source(spec, owner, repo)
+    # A plugin or an ISO is a valid file, but everything below is the check
+    # for an EBOOT under PSP/GAME, and none of it says whether either of those
+    # would install. Left out with that said, rather than listed on a guess.
+    if spec.get("type", HOMEBREW) != HOMEBREW:
+        raise Problem(f"type {spec['type']} is not supported by this catalog yet")
+
+    pin = spec.get("release")
+    if tag and pin and pin["tag"] != tag:
+        raise Problem(f'.pspdx at {tag} pins release {pin["tag"]!r}, the list pins {tag!r}')
+    fixed = tag or (pin or {}).get("tag")
+    # One request either way: a pinned tag is that release and no other, and
+    # otherwise the list, of which the drafts and the pre-releases are no part.
+    if fixed:
+        try:
+            releases = [api(f"/repos/{owner}/{repo}/releases/tags/{urllib.parse.quote(fixed)}",
+                            "release")]
+        except Problem as ex:
+            if "has nothing at" in str(ex):
+                raise Problem(f"release {fixed!r} does not exist on GitHub") from None
+            raise
     else:
         releases = api(f"/repos/{owner}/{repo}/releases?per_page={RELEASE_PAGE}", "releases")
         if not isinstance(releases, list):
@@ -756,7 +875,7 @@ def entry(url, owner, repo, tag, known):
             raise Problem("no published release")
     # The newest is held to every rule, because it is the one a console
     # installs; an older one that breaks a rule only drops out of the history.
-    dates = [(dated(releases[0]), releases[0])]
+    dates = [(dated(releases[0], pinned=bool(fixed)), releases[0])]
     for release in releases[1:]:
         try:
             dates.append((dated(release), release))
@@ -765,25 +884,29 @@ def entry(url, owner, repo, tag, known):
     dates.sort(key=lambda pair: pair[0], reverse=True)
     when, latest = dates[0]
 
+    asset = the_zip(latest, (pin or {}).get("url"))
+    if pin and "published_at" in pin and pin["published_at"] != when:
+        log.append(f'release "published_at" {pin["published_at"]} is ignored; '
+                   f"GitHub says {when}")
+    page_url = latest.get("html_url", url + "/releases")
+
     # The same version published at the same second is the same release, and
     # the same release is the same package: what the catalog says about it
-    # cannot have changed without the author publishing again.
-    was = ((known or {}).get("releases") or [{}])[0]
-    if known and was.get("tag") == latest["tag_name"] and was.get("published_at") == when:
-        return again(known, ref, owner, repo, latest), [f"unchanged, {latest['tag_name']}"]
+    # cannot have changed without the author publishing again. A pin keeps
+    # one release, so an entry with a history is not the pinned one, and an
+    # entry vouched for by another list is not this one.
+    history_was = (known or {}).get("releases") or [{}]
+    was = history_was[0]
+    if (known and was.get("tag") == latest["tag_name"] and was.get("published_at") == when
+            and was.get("url") == asset.get("browser_download_url")
+            and (not fixed or len(history_was) == 1)
+            and known.get("listed_by") == spec.get("listed_by")):
+        return again(known, where, page_url), [f"unchanged, {latest['tag_name']}"]
 
-    spec, raw = read_pspdx(owner, repo, ref)
-    check_source(spec, owner, repo)
-    # A plugin or an ISO is a valid file, but everything below is the check
-    # for an EBOOT under PSP/GAME, and none of it says whether either of those
-    # would install. Left out with that said, rather than listed on a guess.
-    if spec.get("type", HOMEBREW) != HOMEBREW:
-        raise Problem(f"type {spec['type']} is not supported by this catalog yet")
     meta = api(f"/repos/{owner}/{repo}", "repository")
     if not isinstance(meta, dict):
         raise Problem("GitHub answered with something other than a repository")
 
-    asset = the_zip(latest)
     sha, root, sfo, sections, md5 = package(asset, log)
     # The package and the title are said out loud rather than served: the
     # console copies the package into installdir and reads the title off the
@@ -850,19 +973,150 @@ def entry(url, owner, repo, tag, known):
         "_media": media,
         "_raw": raw,
         # Where the file that consented to all of this can be read, at the ref
-        # it was read at. The page links it so that whoever wonders where a
-        # name or a summary came from reads it at its source.
-        "_pspdx": raw_url(owner, repo, ref, ".pspdx"),
+        # it was read at, or in this catalog's listed/. The page links it so
+        # that whoever wonders where a name or a summary came from reads it at
+        # its source.
+        "_pspdx": where,
         # Which of the words above the author actually wrote: the optional
         # three fall back to GitHub, and a page that shows where a fact came
         # from has to know which of the two it was.
         "_said": sorted(spec),
-        "_page": latest.get("html_url", url + "/releases"),
+        "_page": page_url,
     }
     log.append(f"{app['id']} {latest['tag_name']}: {app['name']!r}, "
                + (", ".join(sorted(media)) or "nothing in the PBP")
                + f", {len(history)} release{'' if len(history) == 1 else 's'}")
     return app, log
+
+
+def elsewhere(listed, known):
+    """A listed app whose project lives outside GitHub: nothing can be asked
+    there, so the pinned release in the file says where the zip is and when
+    it was published, and the zip is read as any release's is."""
+    spec, log = listed["spec"], []
+    if spec.get("type", HOMEBREW) != HOMEBREW:
+        raise Problem(f"type {spec['type']} is not supported by this catalog yet")
+    pin = spec.get("release")
+    if not pin:
+        raise Problem('a "source" outside GitHub is built only with a pinned "release"')
+    check_tag(pin["tag"])
+    when = pin["published_at"]
+    moment_ = datetime.fromisoformat(when.replace("Z", "+00:00") if "T" in when
+                                     else when + "T00:00:00+00:00")
+    if not 0 < moment_.timestamp() < 2**32:
+        raise Problem(f"{pin['tag']}: publication time is outside the PSPDX v1 range")
+    was_all = (known or {}).get("releases") or [{}]
+    was = was_all[0]
+    if (known and len(was_all) == 1 and was.get("tag") == pin["tag"]
+            and was.get("published_at") == when and was.get("url") == pin["url"]
+            and known.get("listed_by") == spec.get("listed_by")):
+        return again(known, listed["link"], spec["source"]), [f"unchanged, {pin['tag']}"]
+    name = urllib.parse.unquote(pin["url"].split("?", 1)[0].rsplit("/", 1)[-1]) or "the zip"
+    asset = {"name": name, "size": None, "browser_download_url": pin["url"]}
+    sha, root, sfo, sections, md5 = package(asset, log)
+    log.append(f"{root or 'the zip itself'} is the package, "
+               f"PARAM.SFO says {sfo['TITLE']!r}")
+    media, notes = pictures(sections)
+    log.extend(notes)
+    app = {
+        "id": identity(spec),
+        "source": spec["source"],
+        "name": spec["name"],
+        **{key: spec[key] for key in ("type", "category", "tags") if key in spec},
+        "installdir": installdir(spec),
+        # Nothing to fall back on out here: what the file does not say, the
+        # entry says empty.
+        **{key: spec.get(key, "") for key in ("summary", "author", "license")},
+        **{key: spec[key] for key in ("description", "listed_by") if key in spec},
+        "releases": [published({"tag_name": pin["tag"]}, when, asset, sha, md5)],
+        "_media": media,
+        "_raw": listed["raw"],
+        "_pspdx": listed["link"],
+        "_said": sorted(spec),
+        "_page": spec["source"],
+    }
+    log.append(f"{app['id']} {pin['tag']}: {app['name']!r}, "
+               + (", ".join(sorted(media)) or "nothing in the PBP") + ", 1 release")
+    return app, log
+
+
+# --- listed files -----------------------------------------------------------
+
+def read_listed(path, settings):
+    """One file out of listed/, as entry and elsewhere take it, or the Problem
+    that keeps it out. It is held to the rules a repository's .pspdx is held
+    to, and it is this catalog's word, so its listed_by is this catalog: left
+    out it is filled in, and another list's is a mistake."""
+    name = f"{LISTED}/{os.path.basename(path)}"
+    site = settings["site_url"]
+    listed = {"name": name,
+              "link": (settings["repository_url"] + "/blob/HEAD/" + LISTED + "/"
+                       + urllib.parse.quote(os.path.basename(path)))}
+    with open(path, "rb") as file:
+        raw = file.read(MAX_PSPDX + 1)
+    if len(raw) > MAX_PSPDX:
+        raise Problem(f"{name}: over {MAX_PSPDX} bytes")
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except UnicodeDecodeError:
+        raise Problem(f"{name} is not UTF-8") from None
+    except ValueError as e:
+        raise Problem(f"{name} is not JSON: {e}") from None
+    if isinstance(data, dict):
+        if data.get("listed_by", site) != site:
+            raise Problem(f'{name}: "listed_by" is this catalog, {site}, or left out')
+        data = dict(data, listed_by=site)
+    try:
+        spec = validate(data)
+    except Problem as ex:
+        raise Problem(f"{name}: {ex}") from None
+    for key in ignored(raw):
+        print(f"  {name}: field {key!r} is not in version 1; ignored")
+    return dict(listed, spec=spec, raw=raw)
+
+
+def refuse(problem):
+    """A listed file that is no .pspdx, reported where its app would be."""
+    raise problem
+
+
+def plan(lines, directory, settings):
+    """Everything this run reads, as (label, id, how): the list's lines, and
+    after them every file in listed/ in the order of their names.
+
+    What is wrong between them is the curator's to fix and is known before
+    anything is fetched, so it stops the run: two files for one app, or a
+    repository both on the list and in listed/. A file that breaks the rules
+    of a .pspdx is only that file's problem, and is left out with its reason
+    as a broken repository is."""
+    items, seen = [], {}
+    for url, owner, repo, tag in lines:
+        seen[ident(owner, repo)] = "repos.txt"
+        items.append((url + (f"@{tag}" if tag else ""), ident(owner, repo),
+                      lambda known, line=(url, owner, repo, tag): entry(*line, known)))
+    names = sorted(f for f in os.listdir(directory)
+                   if f.endswith(".pspdx")) if os.path.isdir(directory) else []
+    for file in names:
+        label = f"{LISTED}/{file}"
+        try:
+            listed = read_listed(os.path.join(directory, file), settings)
+        except Problem as ex:
+            items.append((label, None, lambda known, ex=ex: refuse(ex)))
+            continue
+        spec = listed["spec"]
+        found = GITHUB.fullmatch(spec["source"])
+        one = ident(*found.groups()) if found else identity(spec)
+        if one in seen:
+            sys.exit(f"{label}: {one} is already listed by {seen[one]}; keep one")
+        seen[one] = label
+        if found:
+            owner, repo = found.groups()
+            items.append((label, one, lambda known, owner=owner, repo=repo, listed=listed:
+                          entry(f"https://github.com/{owner}/{repo}", owner, repo, "",
+                                known, listed)))
+        else:
+            items.append((label, one, lambda known, listed=listed: elsewhere(listed, known)))
+    return items
 
 
 # --- the site ---------------------------------------------------------------
@@ -984,7 +1238,7 @@ def changes(apps, live):
     return notes
 
 
-def walk(lines, known):
+def walk(items, known):
     """Every repository on the list, asked at once and reported in the
     list's order: the result of each is printed when it is collected, not
     from inside the thread that found it, so a log still reads top to bottom.
@@ -994,10 +1248,9 @@ def walk(lines, known):
     still published."""
     apps, broken = [], []
     with concurrent.futures.ThreadPoolExecutor(WORKERS) as pool:
-        jobs = [(line, pool.submit(entry, *line, known.get(ident(line[1], line[2]))))
-                for line in lines]
-        for (url, owner, repo, tag), job in jobs:
-            label = url + (f"@{tag}" if tag else "")
+        jobs = [((label, one), pool.submit(how, known.get(one) if one else None))
+                for label, one, how in items]
+        for (label, one), job in jobs:
             print(label)
             try:
                 app, log = job.result()
@@ -1014,7 +1267,7 @@ def walk(lines, known):
     return apps, broken
 
 
-def complete(apps, broken, lines):
+def complete(apps, broken, items):
     """The media of every entry copied out of the published catalog, fetched
     off the live site now that it is known there will be a deploy.
 
@@ -1040,7 +1293,7 @@ def complete(apps, broken, lines):
                 print(f"  {app['id']}: {type(ex).__name__}: {ex}; reading it again")
                 holes.append(app)
     if holes:
-        whose = {ident(line[1], line[2]): line for line in lines}
+        whose = {item[1]: item for item in items}
         read, broke = walk([whose[app["id"]] for app in holes], {})
         apps = [app for app in apps if app not in holes] + read
         broken = broken + broke
@@ -1057,9 +1310,12 @@ def output(name, value):
 
 def main(argv):
     listing, out = os.path.join(HERE, "repos.txt"), os.path.join(HERE, "site")
+    folder = os.path.join(HERE, LISTED)
     while argv:
         if argv[0] == "--list" and len(argv) > 1:
             listing = os.path.abspath(argv[1])
+        elif argv[0] == "--listed" and len(argv) > 1:
+            folder = os.path.abspath(argv[1])
         elif argv[0] == "--out" and len(argv) > 1:
             out = os.path.abspath(argv[1])
         else:
@@ -1073,8 +1329,8 @@ def main(argv):
     known = {app["id"]: app for app in ({} if FORCE else (live or {})).get("apps", [])
              if isinstance(app, dict) and "id" in app}
 
-    lines = repos(listing)
-    apps, broken = walk(lines, known)
+    items = plan(repos(listing), folder, config.load())
+    apps, broken = walk(items, known)
     apps.sort(key=lambda app: app["id"])
     # shape also assigns the public media paths before the comparison.
     catalog = shape(apps, generated) if apps else None
@@ -1096,7 +1352,7 @@ def main(argv):
         print("apps changed:", "yes" if moved else "no")
         changed = "yes"
     if changed == "yes":
-        apps, broken = complete(apps, broken, lines)
+        apps, broken = complete(apps, broken, items)
         os.makedirs(out, exist_ok=True)
         write_site(apps, broken, shape(apps, generated), out, listing, notes)
 

@@ -11,6 +11,7 @@ schema before it is pushed:
 
     PSPDX_SCHEMA_DIR=../pspdx/schema python3 -m unittest test_schema_drift
 """
+import json
 import os
 import unittest
 
@@ -33,6 +34,9 @@ DIRECTORY = os.environ.get("PSPDX_SCHEMA_DIR")
 FIELDS = ("name", "author", "summary", "type", "category", "tags", "license", "description",
           "listed_by", "source")
 SAME_RULE = ("installdir",)
+# The fields only a file has: a pinned release becomes the catalog's
+# releases, which the builder fills in.
+FILE_ONLY = ("release",)
 
 FULL = {
     "schema": look.PSPDX_SCHEMA,
@@ -62,7 +66,8 @@ def without(key):
 
 # Cases the schema refuses but every reader accepts: only keys the format
 # does not name, which readers pass over.
-IGNORED_BY_READERS = {"an unknown key", "a key in another case"}
+IGNORED_BY_READERS = {"an unknown key", "a key in another case", "release with an unknown key",
+                      "release with a size"}
 
 # (what it is, the file, whether it is a valid .pspdx)
 CASES = [
@@ -220,6 +225,46 @@ CASES = [
     ("installdir with a backslash", but(installdir="PSP/GAME/PSP\\DX"), False),
     ("installdir with an accent", but(installdir="PSP/GAME/D\u00e9mo"), False),
     ("installdir with a newline", but(installdir="PSP/GAME/PSPDX\n"), False),
+    ("release a tag", but(release={"tag": "v1.0"}), True),
+    ("release a prerelease tag", but(release={"tag": "0.0.3-rc1"}), True),
+    ("release a tag of 64", but(release={"tag": "t" * 64}), True),
+    ("release a tag of 65", but(release={"tag": "t" * 65}), False),
+    ("release a tag empty", but(release={"tag": ""}), False),
+    ("release a tag with a tab", but(release={"tag": "v1\t2"}), False),
+    ("release a tag a number", but(release={"tag": 1}), False),
+    ("release without a tag", but(release={"url": "https://example.com/a.zip"}), False),
+    ("release empty", but(release={}), False),
+    ("release a string", but(release="v1.0"), False),
+    ("release null", but(release=None), False),
+    ("release with an unknown key", but(release={"tag": "v1", "notes": "x"}), False),
+    ("release with a size", but(release={"tag": "v1", "size": 1}), False),
+    ("release every key", but(release={"tag": "v1", "published_at": "2026-09-12T00:00:00Z",
+                                       "url": "https://github.com/chriopter/pspdx/releases/"
+                                              "download/v1/pspdx.zip"}), True),
+    ("release a bare date", but(release={"tag": "v1", "published_at": "2026-09-12"}), True),
+    ("release a date with an offset",
+     but(release={"tag": "v1", "published_at": "2026-09-12T00:00:00+02:00"}), False),
+    ("release a date the calendar lacks", but(release={"tag": "v1", "published_at": "2026-02-30"}),
+     False),
+    ("release a url over http", but(release={"tag": "v1", "url": "http://example.com/a.zip"}), False),
+    ("release a url of 512",
+     but(release={"tag": "v1", "url": "https://example.com/" + "u" * 492}), True),
+    ("release a url of 513",
+     but(release={"tag": "v1", "url": "https://example.com/" + "u" * 493}), False),
+    ("release a url with a space", but(release={"tag": "v1", "url": "https://example.com/a b.zip"}),
+     False),
+    ("release elsewhere with url and published_at",
+     but(source="https://archive.org/details/psp-blocks",
+         release={"tag": "1.0", "url": "https://archive.org/download/b/b.zip",
+                  "published_at": "2011-05-04"}), True),
+    ("release elsewhere only a tag",
+     but(source="https://archive.org/details/psp-blocks", release={"tag": "1.0"}), False),
+    ("release elsewhere without published_at",
+     but(source="https://archive.org/details/psp-blocks",
+         release={"tag": "1.0", "url": "https://archive.org/download/b/b.zip"}), False),
+    ("release elsewhere without url",
+     but(source="https://archive.org/details/psp-blocks",
+         release={"tag": "1.0", "published_at": "2011-05-04"}), False),
     ("a list", [FULL], False),
     ("a string", "PSPDX", False),
     ("null", None, False),
@@ -302,6 +347,19 @@ class SchemaDriftTests(unittest.TestCase):
                 self.assertEqual((said == "accepted", not found), (reader, valid),
                                  f"look.py: {said}; schema: {found or 'accepted'}")
 
+    def test_a_pinned_release_is_held_as_a_catalog_release(self):
+        pin = self.pspdx["properties"]["release"]
+        release = self.catalog["$defs"]["release"]["properties"]
+        self.assertFalse(pin["additionalProperties"])
+        self.assertEqual(pin["required"], ["tag"])
+        self.assertEqual(set(pin["properties"]), set(look.RELEASE_KEYS))
+        for key in look.RELEASE_KEYS:
+            with self.subTest(key):
+                self.assertEqual({k: v for k, v in pin["properties"][key].items()
+                                  if k != "description"},
+                                 {k: v for k, v in release[key].items() if k != "description"})
+        self.assertEqual(release["url"]["maxLength"], look.URL)
+
     def test_the_tables_in_look_are_the_schemas(self):
         properties = self.pspdx["properties"]
         self.assertEqual(self.pspdx["$id"], look.PSPDX_SCHEMA)
@@ -325,7 +383,10 @@ class SchemaDriftTests(unittest.TestCase):
 
     def test_the_catalog_repeats_the_fields_as_they_are(self):
         app = self.catalog["$defs"]["app"]["properties"]
-        self.assertEqual(set(FIELDS) | set(SAME_RULE) | {"schema"}, set(look.KEYS))
+        self.assertEqual(set(FIELDS) | set(SAME_RULE) | set(FILE_ONLY) | {"schema"},
+                         set(look.KEYS))
+        for field in FILE_ONLY:
+            self.assertNotIn(field, app)
         for field in FIELDS:
             with self.subTest(field):
                 self.assertEqual(app[field], self.pspdx["properties"][field])
@@ -340,8 +401,11 @@ class SchemaDriftTests(unittest.TestCase):
         self.assertEqual(set(self.catalog["$defs"]["app"]["required"]),
                          {"source", "name", "releases"})
         self.assertTrue(app["id"]["description"].startswith("optional"))
-        # The conditions between fields are the file's, word for word.
-        self.assertEqual(self.catalog["$defs"]["app"]["allOf"], self.pspdx["allOf"])
+        # The conditions between fields are the file's, word for word, but
+        # for those about a field only a file has.
+        self.assertEqual(self.catalog["$defs"]["app"]["allOf"],
+                         [rule for rule in self.pspdx["allOf"]
+                          if not any(f'"{field}"' in json.dumps(rule) for field in FILE_ONLY)])
 
     def test_a_catalog_entry_from_outside_github_names_its_list(self):
         for what, app, valid in ENTRY_CASES:

@@ -9,6 +9,8 @@ or in [PSPDX](https://github.com/chriopter/pspdx) on your PSP.
 ## Add your app
 
 [Open an issue](https://github.com/chriopter/pspdx-catalog/issues) with your repository URL.
+No `.pspdx` in the repository? It can be listed from a file in [`listed/`](listed/),
+like [this example](listed/pspdx-demo-abandoned.pspdx).
 
 ## Make your own catalog
 
@@ -26,7 +28,7 @@ set [`catalog.config.json`](catalog.config.json), enable GitHub Pages.
   hashed before → extract icon, picture, video and sound
 - **Push to `master` or manual run** → read everything again, including
   manifest-only edits
-- Drafts and prereleases are skipped.
+- Drafts and prereleases are skipped, unless a `.pspdx` pins one with `release`.
 - Keep the schema URLs as they are: they identify the shared formats.
 
 #### Timestamp
@@ -51,6 +53,7 @@ set [`catalog.config.json`](catalog.config.json), enable GitHub Pages.
 | File | Purpose |
 |---|---|
 | [`repos.txt`](repos.txt) | One repository per line; `@tag` pins a release |
+| [`listed/`](listed/) | A `.pspdx` for each repository without its own |
 | [`catalog.config.json`](catalog.config.json) | Catalog name and URLs |
 | [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) | Tests, builds and deploys |
 | [`.github/look.py`](.github/look.py) | Reads releases and builds the catalog |

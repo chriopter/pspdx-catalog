@@ -406,5 +406,219 @@ class CatalogRegressionTests(unittest.TestCase):
             self.assertEqual(check_schema.problems(catalog, schema), [])
 
 
+class PinsListingsAndZipsTests(unittest.TestCase):
+    """GitHub is answered from here throughout: api by path, the repository's
+    own .pspdx by whether the test gives one, and a package that is only its
+    title and a hash of its URL."""
+    SITE = config.load()["site_url"]
+
+    @staticmethod
+    def release(tag, when, names=("demo.zip",), **more):
+        return dict({"tag_name": tag, "published_at": when,
+                     "html_url": f"https://github.com/example/demo/releases/tag/{tag}",
+                     "assets": [{"name": name, "size": 10 + i,
+                                 "browser_download_url": "https://github.com/example/demo/"
+                                                         f"releases/download/{tag}/{name}"}
+                                for i, name in enumerate(names)]}, **more)
+
+    def run_entry(self, own, releases, tagged=(), listed=None, known=None, tag=""):
+        answers = {"/repos/example/demo/releases?per_page=30": releases,
+                   "/repos/example/demo": {"description": "From GitHub", "license": None}}
+        for release in tagged:
+            answers[f"/repos/example/demo/releases/tags/{release['tag_name']}"] = release
+        asked, fetched = [], []
+
+        def api(path, what):
+            asked.append(path)
+            if path not in answers:
+                raise look.Problem(f"{what}: GitHub has nothing at {path}")
+            return answers[path]
+
+        def read_pspdx(owner, repo, ref):
+            if own is None:
+                raise look.Problem("no .pspdx")
+            return look.validate(dict(own)), json.dumps(own).encode()
+
+        def package(asset, log):
+            fetched.append(asset["browser_download_url"])
+            if asset["size"] is None:
+                asset["size"] = 99
+            return ("a" * 64, "Demo/", {"TITLE": "Demo"}, {}, "5" * 32)
+        saved = look.api, look.read_pspdx, look.package
+        look.api, look.read_pspdx, look.package = api, read_pspdx, package
+        try:
+            if listed and not look.GITHUB.fullmatch(listed["spec"]["source"]):
+                app, log = look.elsewhere(listed, known)
+            else:
+                app, log = look.entry("https://github.com/example/demo", "example", "demo",
+                                      tag, known, listed)
+        finally:
+            look.api, look.read_pspdx, look.package = saved
+        return app, log, asked, fetched
+
+    def listed_file(self, directory, name, data):
+        path = pathlib.Path(directory) / name
+        path.write_text(json.dumps(data))
+        return look.read_listed(str(path), config.load())
+
+    SPEC = {"schema": look.PSPDX_SCHEMA, "name": "Demo", "source": "https://github.com/example/demo"}
+
+    def test_a_listed_file_is_used_for_a_repository_without_its_own(self):
+        with tempfile.TemporaryDirectory() as directory:
+            listed = self.listed_file(directory, "demo-example.pspdx",
+                                      dict(self.SPEC, summary="Listed words"))
+        self.assertEqual(listed["spec"]["listed_by"], self.SITE)
+        app, log, _, fetched = self.run_entry(None, [self.release("v1", "2026-01-01T00:00:00Z")],
+                                              listed=listed)
+        self.assertEqual((app["id"], app["listed_by"], app["summary"]),
+                         ("io.github.example.demo", self.SITE, "Listed words"))
+        self.assertEqual(app["_raw"], listed["raw"])
+        self.assertTrue(app["_pspdx"].endswith("/blob/HEAD/listed/demo-example.pspdx"))
+        self.assertEqual(len(fetched), 1)
+        self.assertFalse(any("redundant" in line for line in log), log)
+        with tempfile.TemporaryDirectory() as directory:
+            catalog = look.shape([app], "2026-09-12T00:00:00Z")
+            look.write_site([app], [], catalog, directory)
+            self.assertEqual((pathlib.Path(directory) / "apps" / app["id"] / "read.pspdx")
+                             .read_bytes(), listed["raw"])
+
+    def test_the_repositorys_own_file_wins_and_the_log_says_the_listed_one_is_redundant(self):
+        with tempfile.TemporaryDirectory() as directory:
+            listed = self.listed_file(directory, "demo.pspdx", dict(self.SPEC, name="Listed"))
+        app, log, _, _ = self.run_entry(dict(self.SPEC, name="Own"),
+                                        [self.release("v1", "2026-01-01T00:00:00Z")],
+                                        listed=listed)
+        self.assertEqual(app["name"], "Own")
+        self.assertNotIn("listed_by", app)
+        self.assertTrue(any("listed/demo.pspdx is redundant" in line for line in log), log)
+
+    def test_a_pinned_release_is_the_only_one_even_with_newer_ones(self):
+        releases = [self.release("v3", "2026-03-01T00:00:00Z"),
+                    self.release("v2", "2026-02-01T00:00:00Z"),
+                    self.release("v1", "2026-01-01T00:00:00Z")]
+        spec = dict(self.SPEC, release={"tag": "v2", "published_at": "2020-01-01"})
+        app, log, asked, fetched = self.run_entry(spec, releases, tagged=[releases[1]])
+        self.assertEqual([r["tag"] for r in app["releases"]], ["v2"])
+        self.assertEqual(app["releases"][0]["published_at"], "2026-02-01T00:00:00Z")
+        self.assertNotIn("/repos/example/demo/releases?per_page=30", asked)
+        self.assertEqual(len(fetched), 1)
+        self.assertTrue(any("is ignored; GitHub says" in line for line in log), log)
+        # An entry with a history is not the pinned one, even at the same tag.
+        unpinned, _, _, _ = self.run_entry(self.SPEC, releases[1:])
+        known = look.shape([unpinned], "2026-09-12T00:00:00Z")["apps"][0]
+        self.assertEqual(len(known["releases"]), 2)
+        again, log, _, fetched = self.run_entry(spec, releases, tagged=[releases[1]], known=known)
+        self.assertEqual((len(again["releases"]), len(fetched)), (1, 1))
+        known = look.shape([again], "2026-09-12T00:00:00Z")["apps"][0]
+        _, log, _, fetched = self.run_entry(spec, releases, tagged=[releases[1]], known=known)
+        self.assertEqual((log, fetched), (["unchanged, v2"], []))
+        # A tag GitHub does not have leaves the app out, saying so.
+        with self.assertRaisesRegex(look.Problem, "'v9' does not exist on GitHub"):
+            self.run_entry(dict(self.SPEC, release={"tag": "v9"}), releases)
+        # The list's pin and the file's pin must agree.
+        with self.assertRaisesRegex(look.Problem, "pins release 'v2', the list pins 'v1'"):
+            self.run_entry(spec, releases, tagged=releases, tag="v1")
+
+    def test_a_pinned_prerelease_is_listed(self):
+        rc = self.release("v2-rc1", "2026-02-01T00:00:00Z", prerelease=True)
+        stable = self.release("v1", "2026-01-01T00:00:00Z")
+        app, _, _, _ = self.run_entry(dict(self.SPEC, release={"tag": "v2-rc1"}),
+                                      [rc, stable], tagged=[rc])
+        self.assertEqual([r["tag"] for r in app["releases"]], ["v2-rc1"])
+        app, _, _, _ = self.run_entry(self.SPEC, [rc, stable])
+        self.assertEqual([r["tag"] for r in app["releases"]], ["v1"])
+
+    def test_a_pin_with_a_url_takes_that_asset(self):
+        release = self.release("v2", "2026-02-01T00:00:00Z", names=("a.zip", "b.zip"))
+        url = release["assets"][1]["browser_download_url"]
+        app, _, _, fetched = self.run_entry(dict(self.SPEC, release={"tag": "v2", "url": url}),
+                                            [release], tagged=[release])
+        self.assertEqual((app["releases"][0]["url"], fetched), (url, [url]))
+        with self.assertRaisesRegex(look.Problem, "no asset at"):
+            self.run_entry(dict(self.SPEC, release={"tag": "v2", "url": url + "x"}),
+                           [release], tagged=[release])
+
+    def test_the_zip_rule(self):
+        pick = lambda *names: look.the_zip(self.release("v1", "2026-01-01T00:00:00Z",
+                                                        names=names))["name"]
+        self.assertEqual(pick("game.zip"), "game.zip")
+        self.assertEqual(pick("game.zip", "notes.txt", "game.zip.sha256"), "game.zip")
+        self.assertEqual(pick("game-vita.zip", "game-PSP.zip", "src.tar.gz"), "game-PSP.zip")
+        for names, reason in ((("a.zip", "b.zip"), "2 zips: a.zip, b.zip; none with psp"),
+                              (("psp-a.zip", "psp-b.zip", "c.zip"), "3 zips.*; 2 with psp"),
+                              (("game.vpk",), "no zip attached")):
+            with self.subTest(names=names), self.assertRaisesRegex(look.Problem, reason):
+                pick(*names)
+
+    def test_a_listed_file_outside_github_with_url_and_published_at(self):
+        spec = {"schema": look.PSPDX_SCHEMA, "name": "PSP Blocks",
+                "source": "https://archive.org/details/psp-blocks",
+                "release": {"tag": "1.0", "url": "https://archive.org/download/psp-blocks/blocks.zip",
+                            "published_at": "2011-05-04"}}
+        with tempfile.TemporaryDirectory() as directory:
+            listed = self.listed_file(directory, "blocks.pspdx", spec)
+            with self.assertRaisesRegex(look.Problem, 'outside GitHub pins its "release"'):
+                self.listed_file(directory, "bare.pspdx",
+                                 dict(spec, release={"tag": "1.0"}))
+            with self.assertRaisesRegex(look.Problem, '"listed_by" is this catalog'):
+                self.listed_file(directory, "other.pspdx",
+                                 dict(spec, listed_by="https://example.com/"))
+        app, log, asked, fetched = self.run_entry(None, [], listed=listed)
+        self.assertEqual(asked, [])
+        self.assertEqual(fetched, [spec["release"]["url"]])
+        expected_id = look.identity(dict(spec, listed_by=self.SITE))
+        self.assertEqual((app["id"], app["listed_by"], app["installdir"]),
+                         (expected_id, self.SITE, "PSP/GAME/PSPBlocks"))
+        self.assertEqual(app["releases"], [{"tag": "1.0", "published_at": "2011-05-04",
+                                            "url": spec["release"]["url"], "size": 99,
+                                            "sha256": "a" * 64, "eboot_md5": "5" * 32}])
+        known = look.shape([app], "2026-09-12T00:00:00Z")["apps"][0]
+        _, log, _, fetched = self.run_entry(None, [], listed=listed, known=known)
+        self.assertEqual((log, fetched), (["unchanged, 1.0"], []))
+        with self.assertRaisesRegex(look.Problem, 'built only with a pinned "release"'):
+            self.run_entry(None, [], listed=dict(listed, spec={k: v for k, v in listed["spec"].items()
+                                                              if k != "release"}))
+        try:
+            import check_schema
+        except ImportError:
+            if os.environ.get("CI"):
+                raise
+            return
+        schema = check_schema.load(os.path.join(os.environ["PSPDX_SCHEMA_DIR"], "catalog-v1.json")
+                                   if os.environ.get("PSPDX_SCHEMA_DIR") else look.SCHEMA)
+        self.assertEqual(check_schema.problems(look.shape([app], "2026-09-12T00:00:00Z"), schema), [])
+
+    def test_the_plan_reads_listed_files_and_stops_on_a_curators_mistake(self):
+        lines = [("https://github.com/example/other", "example", "other", "")]
+        with tempfile.TemporaryDirectory() as directory:
+            folder = pathlib.Path(directory)
+            (folder / "README.md").write_text("not a listing")
+            (folder / "b.pspdx").write_text(json.dumps(self.SPEC))
+            (folder / "a.pspdx").write_text("{ broken")
+            items = look.plan(lines, str(folder), config.load())
+            self.assertEqual([(label, one) for label, one, _ in items],
+                             [("https://github.com/example/other", "io.github.example.other"),
+                              ("listed/a.pspdx", None),
+                              ("listed/b.pspdx", "io.github.example.demo")])
+            with self.assertRaisesRegex(look.Problem, "listed/a.pspdx is not JSON"):
+                items[1][2](None)
+            (folder / "c.pspdx").write_text(json.dumps(dict(self.SPEC, name="Again")))
+            with self.assertRaisesRegex(SystemExit, "already listed by listed/b.pspdx"):
+                look.plan(lines, str(folder), config.load())
+            (folder / "c.pspdx").unlink()
+            with self.assertRaisesRegex(SystemExit, "already listed by repos.txt"):
+                look.plan(lines + [("https://github.com/example/demo", "example", "demo", "")],
+                          str(folder), config.load())
+            self.assertEqual(len(look.plan(lines, str(folder / "nothing"), config.load())), 1)
+
+    def test_the_example_in_listed_is_a_valid_file(self):
+        folder = pathlib.Path(look.HERE) / look.LISTED
+        for path in sorted(folder.glob("*.pspdx")):
+            with self.subTest(path.name):
+                listed = look.read_listed(str(path), config.load())
+                self.assertTrue(look.GITHUB.fullmatch(listed["spec"]["source"])
+                                or "release" in listed["spec"])
+
+
 if __name__ == "__main__":
     unittest.main()
