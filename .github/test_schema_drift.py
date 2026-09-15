@@ -30,7 +30,7 @@ DIRECTORY = os.environ.get("PSPDX_SCHEMA_DIR")
 # The fields the catalog repeats word for word. The install directory is
 # repeated by its rule alone: the file may leave it out, the catalog may not,
 # and each schema says which in its own description.
-FIELDS = ("name", "author", "summary", "type", "tags", "license", "description",
+FIELDS = ("name", "author", "summary", "type", "category", "tags", "license", "description",
           "listed_by", "source")
 SAME_RULE = ("installdir",)
 
@@ -39,6 +39,7 @@ FULL = {
     "source": "https://github.com/chriopter/pspdx",
     "name": "PSPDX",
     "type": "homebrew",
+    "category": "app",
     "author": "chriopter",
     "summary": "Download, run and update homebrew on your PSP.",
     "tags": ["app", "Download manager"],
@@ -61,7 +62,7 @@ def without(key):
 
 # Cases the schema refuses but every reader accepts: only keys the format
 # does not name, which readers pass over.
-IGNORED_BY_READERS = {"an unknown key", "a key in another case", "category, the old field"}
+IGNORED_BY_READERS = {"an unknown key", "a key in another case"}
 
 # (what it is, the file, whether it is a valid .pspdx)
 CASES = [
@@ -164,7 +165,14 @@ CASES = [
     ("a tag twice", but(tags=["game", "app", "game"]), False),
     ("a tag with a newline", but(tags=["one\ntwo"]), False),
     ("a tag with a tab", but(tags=["one\ttwo"]), False),
-    ("category, the old field", but(category="app"), False),
+    ("category a tab's word", but(category="game"), True),
+    ("category no tab has", but(category="Rundenbasierte Strategie"), True),
+    ("category 24 characters of four bytes", but(category="\U0001f3ae" * 24), True),
+    ("category 25", but(category="c" * 25), False),
+    ("category empty", but(category=""), False),
+    ("category a list", but(category=["game"]), False),
+    ("category null", but(category=None), False),
+    ("category with a newline", but(category="one\ntwo"), False),
     ("description 2500", but(description="d" * 2500), True),
     ("description 2500 newlines", but(description="\n" * 2500), True),
     ("description 2501", but(description="d" * 2501), False),
@@ -248,6 +256,22 @@ ENTRY_CASES = [
 ]
 
 
+# A catalog calls its entries as it likes: its id is free text, and only one
+# of no characters, of more than 128 or with a control character is refused.
+ID_CASES = [
+    ("no id", {k: v for k, v in ENTRY.items() if k != "id"}, True),
+    ("the id the builder derives", ENTRY, True),
+    ("a word", dict(ENTRY, id="oceanpop"), True),
+    ("an underscore", dict(ENTRY, id="laser_kombat"), True),
+    ("a path", dict(ENTRY, id="../../x"), True),
+    ("128 characters", dict(ENTRY, id="x" * 128), True),
+    ("129 characters", dict(ENTRY, id="x" * 129), False),
+    ("empty", dict(ENTRY, id=""), False),
+    ("a newline", dict(ENTRY, id="one\ntwo"), False),
+    ("a number", dict(ENTRY, id=7), False),
+]
+
+
 def where(url):
     return os.path.join(DIRECTORY, url.rsplit("/", 1)[1]) if DIRECTORY else url
 
@@ -310,10 +334,12 @@ class SchemaDriftTests(unittest.TestCase):
                 self.assertEqual({k: v for k, v in app[field].items() if k != "description"},
                                  {k: v for k, v in self.pspdx["properties"][field].items()
                                   if k != "description"})
-        # An entry needs no more than a file does, and its releases; the
-        # builder writes the derived directory, and a console derives it too.
+        # An entry needs no more than a file does, and its releases. The id
+        # is the catalog's to give or leave out: the builder writes the one it
+        # derives, and a console makes its own where a catalog's is none.
         self.assertEqual(set(self.catalog["$defs"]["app"]["required"]),
-                         {"id", "source", "name", "releases"})
+                         {"source", "name", "releases"})
+        self.assertTrue(app["id"]["description"].startswith("optional"))
         # The conditions between fields are the file's, word for word.
         self.assertEqual(self.catalog["$defs"]["app"]["allOf"], self.pspdx["allOf"])
 
@@ -332,6 +358,14 @@ class SchemaDriftTests(unittest.TestCase):
                     said = str(problem)
                 self.assertEqual((not found, said == "accepted"), (valid, valid),
                                  f"schema: {found or 'accepted'}; look.py: {said}")
+
+    def test_a_catalog_names_its_entries_as_it_likes(self):
+        for what, app, valid in ID_CASES:
+            with self.subTest(what):
+                catalog = {"schema": look.SCHEMA, "generated_at": "2026-09-12T00:00:00Z",
+                           "apps": [app]}
+                found = check_schema.problems(catalog, self.catalog)
+                self.assertEqual(not found, valid, found)
 
 
 if __name__ == "__main__":

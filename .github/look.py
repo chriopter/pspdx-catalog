@@ -93,11 +93,11 @@ HOMEBREW = "homebrew"
 # may be. The caps are the schema's: a name fits the XMB, a summary fits one
 # line of a 480 pixel screen, and a list's address fits the URL slot the
 # console has for every other address.
-KEYS = ("schema", "source", "name", "type", "tags", "installdir", "summary",
+KEYS = ("schema", "source", "name", "type", "category", "tags", "installdir", "summary",
         "author", "license", "description", "listed_by")
 REQUIRED = ("schema", "source", "name")
-LIMITS = {"source": 255, "name": 40, "summary": 60, "author": 60, "license": 60,
-          "description": 2500, "listed_by": 255}
+LIMITS = {"source": 255, "name": 40, "category": 24, "summary": 60, "author": 60,
+          "license": 60, "description": 2500, "listed_by": 255}
 
 # Tags say what an app is in as many words as it takes, up to eight, each a
 # word or two long; the console makes a tab of the ones it knows.
@@ -372,6 +372,10 @@ def validate(data):
                       "https://github.com/<owner>/<repository>")
     if not data["name"]:
         raise Problem('.pspdx: "name" is empty')
+    # The category is the one group the app belongs in, a word like a tag;
+    # an empty one names none.
+    if data.get("category") == "":
+        raise Problem('.pspdx: "category" is empty')
     if "tags" in data:
         tags = data["tags"]
         if not isinstance(tags, list) or len(tags) > TAGS:
@@ -831,9 +835,9 @@ def entry(url, owner, repo, tag, known):
         "source": url,
         "name": spec["name"],
         # The words nothing stands in for: a file that gives no tags, no
-        # type, no description or no list is an entry without them, not one
-        # with a guess.
-        **{key: spec[key] for key in ("type", "tags") if key in spec},
+        # type, no category, no description or no list is an entry without
+        # them, not one with a guess.
+        **{key: spec[key] for key in ("type", "category", "tags") if key in spec},
         # Always there for a homebrew, derived where the file said nothing,
         # so that a console reading the catalog never has to know the rule.
         "installdir": installdir(spec),
