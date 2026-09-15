@@ -3,48 +3,17 @@
 Browse PSP homebrew on the **[catalog website →](https://chriopter.github.io/pspdx-catalog/)**
 or in [PSPDX](https://github.com/chriopter/pspdx) on your PSP.
 
-## How it works
+Apps implementing the [PSPDX standard](https://chriopter.github.io/pspdx/),
+collected in one catalog every hour.
 
-- **A list.** [`repos.txt`](repos.txt) holds one GitHub repository per line.
-  It's just like a phonebook.
-- **A builder.** Every hour a GitHub workflow reads each repo's `.pspdx` and
-  its newest releases, up to 20 → hashes the ZIPs → extracts artwork from the
-  EBOOT → publishes `catalog.json`.
-- **Fast on the PSP.** One request lists every app. Downloads still come from
-  the authors.
+## Add your app
 
-## Add an app
-
-- Open an [issue](https://github.com/chriopter/pspdx-catalog/issues) with the
-  repository URL.
-- The repo needs a root `.pspdx` and a release with one ZIP holding one
-  `EBOOT.PBP`. [PSPDX Demo](https://github.com/chriopter/pspdx-demo) is a
-  complete example.
-- Drafts and prereleases are skipped.
-
-<details>
-<summary><b>The .pspdx</b> · fields, tags, repos without one</summary>
-
-- **Required** → only `schema`, `source` (the repo URL) and `name`
-- **`tags`** → `game`, `emulator`, `app` and `demo` get a tab on the PSP
-- **`installdir`** → only if the folder isn't the repo name
-- **No `.pspdx` in the repo?** → this builder lists only repos with their
-  own; another catalog can list such an app by setting `listed_by` on its
-  entry
-
-All fields: [PSPDX standard](https://chriopter.github.io/pspdx/)
-
-</details>
+[Open an issue](https://github.com/chriopter/pspdx-catalog/issues) with your repository URL.
 
 ## Make your own catalog
 
-1. Fork this repository.
-2. Put your repositories in [`repos.txt`](repos.txt).
-3. Set name, Pages URL and repository URL in
-   [`catalog.config.json`](catalog.config.json).
-4. Enable GitHub Pages. Done! It updates every hour.
-
-Keep the schema URLs as they are: they identify the shared formats.
+Fork this repository, list your repos in [`repos.txt`](repos.txt),
+set [`catalog.config.json`](catalog.config.json), enable GitHub Pages.
 
 <details>
 <summary><b>Builder</b> · runs, reuse, failures</summary>
@@ -57,6 +26,8 @@ Keep the schema URLs as they are: they identify the shared formats.
   hashed before → extract icon, picture, video and sound
 - **Push to `master` or manual run** → read everything again, including
   manifest-only edits
+- Drafts and prereleases are skipped.
+- Keep the schema URLs as they are: they identify the shared formats.
 
 #### Timestamp
 
