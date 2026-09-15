@@ -2,6 +2,8 @@
 
 An example catalog using the [PSPDX standard](https://chriopter.github.io/pspdx/),
 rebuilt every hour.
+Icon, screenshot, video and sound are extracted from each app's EBOOT
+(`ICON0.PNG`, `PIC1.PNG`, `ICON1.PMF`, `SND0.AT3`), so lists load with artwork, fast.
 
 Browse PSP homebrew on the **[catalog website →](https://chriopter.github.io/pspdx-catalog/)**
 or in [PSPDX](https://github.com/chriopter/pspdx-app) on your PSP.
