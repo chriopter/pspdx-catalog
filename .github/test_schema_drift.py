@@ -302,15 +302,15 @@ ENTRY_CASES = [
 
 
 # A catalog calls its entries as it likes: its id is free text, and only one
-# of no characters, of more than 128 or with a control character is refused.
+# of no characters, of more than 159 or with a control character is refused.
 ID_CASES = [
     ("no id", {k: v for k, v in ENTRY.items() if k != "id"}, True),
     ("the id the builder derives", ENTRY, True),
     ("a word", dict(ENTRY, id="oceanpop"), True),
     ("an underscore", dict(ENTRY, id="laser_kombat"), True),
     ("a path", dict(ENTRY, id="../../x"), True),
-    ("128 characters", dict(ENTRY, id="x" * 128), True),
-    ("129 characters", dict(ENTRY, id="x" * 129), False),
+    ("159 characters", dict(ENTRY, id="x" * 159), True),
+    ("160 characters", dict(ENTRY, id="x" * 160), False),
     ("empty", dict(ENTRY, id=""), False),
     ("a newline", dict(ENTRY, id="one\ntwo"), False),
     ("a number", dict(ENTRY, id=7), False),
