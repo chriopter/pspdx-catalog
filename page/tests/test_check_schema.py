@@ -6,7 +6,7 @@ try:
 except ImportError:
     check_schema = None
 
-# The workflow installs requirements.txt before the tests, so there a missing
+# The workflow installs page/requirements.txt before the tests, so there a missing
 # module is a broken step and must fail; on a bare checkout it only skips.
 NEEDED = bool(os.environ.get("CI"))
 

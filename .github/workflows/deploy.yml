@@ -46,11 +46,11 @@ jobs:
       - name: Install the schema checker
         run: |
           python3 -m venv "$RUNNER_TEMP/venv"
-          "$RUNNER_TEMP/venv/bin/pip" install -r requirements.txt
+          "$RUNNER_TEMP/venv/bin/pip" install -r page/requirements.txt
 
       - name: Test catalog processing
         run: |
-          "$RUNNER_TEMP/venv/bin/python" -m unittest discover -s page -t page -p 'test_*.py' -v
+          "$RUNNER_TEMP/venv/bin/python" -m unittest discover -s page/tests -t page -p 'test_*.py' -v
 
       - name: Read the repositories on the list
         id: look

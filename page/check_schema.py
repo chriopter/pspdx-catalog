@@ -7,7 +7,7 @@ that is up stays up, and every reason is printed with the place it is at.
     check_schema.py <catalog.json>    another file
     check_schema.py --schema <file>   another schema, e.g. an unpushed one
 
-    pip install -r requirements.txt
+    pip install -r page/requirements.txt
 
 look.py validates each .pspdx against the same schema as it reads a file; this
 is the last word, the whole built catalog against the catalog schema, before
@@ -57,7 +57,7 @@ def validator(schema):
         missing = [name for name in FORMATS if name not in checker.checkers]
         if missing:
             raise RuntimeError(f"no checker for format {', '.join(missing)}; "
-                               "install requirements.txt")
+                               "install page/requirements.txt")
         _VALIDATORS[key] = cls(schema, format_checker=checker)
     return _VALIDATORS[key]
 
