@@ -11,9 +11,6 @@ or in [PSPDX](https://github.com/chriopter/pspdx-app) on your PSP.
 ## Add your app
 
 [Open an issue](https://github.com/chriopter/pspdx-catalog/issues) with your repository URL.
-No `.pspdx` in the repository? It can be listed from a file in
-[`catalog/fallback/`](catalog/fallback/), like
-[this example](catalog/fallback/pspdx-demo-abandoned.pspdx).
 
 ## Make your own catalog
 
