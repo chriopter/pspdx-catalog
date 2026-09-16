@@ -11,13 +11,14 @@ or in [PSPDX](https://github.com/chriopter/pspdx-app) on your PSP.
 ## Add your app
 
 [Open an issue](https://github.com/chriopter/pspdx-catalog/issues) with your repository URL.
-No `.pspdx` in the repository? It can be listed from a file in [`listed/`](listed/),
-like [this example](listed/pspdx-demo-abandoned.pspdx).
+No `.pspdx` in the repository? It can be listed from a file in
+[`catalog/fallback/`](catalog/fallback/), like
+[this example](catalog/fallback/pspdx-demo-abandoned.pspdx).
 
 ## Make your own catalog
 
-Fork this repository, list your repos in [`repos.txt`](repos.txt),
-set [`catalog.config.json`](catalog.config.json), enable GitHub Pages.
+Fork this repository, list your repos in [`catalog/sources.txt`](catalog/sources.txt),
+set [`catalog/config.json`](catalog/config.json), enable GitHub Pages.
 
 <details>
 <summary><b>Builder</b> · runs, reuse, failures</summary>
@@ -54,9 +55,10 @@ set [`catalog.config.json`](catalog.config.json), enable GitHub Pages.
 
 | File | Purpose |
 |---|---|
-| [`repos.txt`](repos.txt) | One repository per line; `@tag` pins a release |
-| [`listed/`](listed/) | A `.pspdx` for each repository without its own |
-| [`catalog.config.json`](catalog.config.json) | Catalog name and URLs |
+| [`catalog/`](catalog/) | What the catalog lists — the curation |
+| [`catalog/sources.txt`](catalog/sources.txt) | One repository per line; `@tag` pins a release |
+| [`catalog/fallback/`](catalog/fallback/) | A `.pspdx` for each repository without its own; the repo's own wins once it has one |
+| [`catalog/config.json`](catalog/config.json) | Catalog name and URLs |
 | [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) | Tests, builds and deploys |
 | [`page/`](page/) | The generator: reads the list, builds the catalog and renders the site |
 | [`page/look.py`](page/look.py) | Reads releases and builds the catalog |
@@ -70,7 +72,7 @@ set [`catalog.config.json`](catalog.config.json), enable GitHub Pages.
 | File | Purpose |
 |---|---|
 | `catalog.json` | Fast browsing; [catalog format](https://chriopter.github.io/pspdx/#catalog-v1) |
-| `catalog.txt` | Copy of `repos.txt`; PSPDX falls back to it and asks the repos directly |
+| `catalog.txt` | Copy of `catalog/sources.txt`; PSPDX falls back to it and asks the repos directly |
 | `index.html`, `catalog.html` | Browse page and readable catalog |
 | `apps/<id>/` | One page per app (summary, description, screenshots, latest release, where each value came from) and its EBOOT media |
 

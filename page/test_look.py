@@ -180,7 +180,7 @@ class CatalogRegressionTests(unittest.TestCase):
             out = pathlib.Path(directory)
             self.assertEqual(json.loads((out / "catalog.json").read_text()), catalog)
             self.assertEqual((out / "catalog.txt").read_text(),
-                             (pathlib.Path(look.HERE) / "repos.txt").read_text())
+                             (pathlib.Path(look.HERE) / "catalog" / "sources.txt").read_text())
             self.assertIn("Example", (out / "index.html").read_text())
             self.assertIn("generated_at", (out / "catalog.json").read_text())
             self.assertIn("media", catalog["apps"][0])
@@ -540,7 +540,7 @@ class PinsListingsAndZipsTests(unittest.TestCase):
                                               listed=listed)
         self.assertEqual((app["id"], app["summary"]), ("io.github.example.demo", "Listed words"))
         self.assertEqual(app["_raw"], listed["raw"])
-        self.assertTrue(app["_pspdx"].endswith("/blob/HEAD/listed/demo-example.pspdx"))
+        self.assertTrue(app["_pspdx"].endswith("/blob/HEAD/catalog/fallback/demo-example.pspdx"))
         self.assertEqual(len(fetched), 1)
         self.assertFalse(any("redundant" in line for line in log), log)
         with tempfile.TemporaryDirectory() as directory:
@@ -556,7 +556,7 @@ class PinsListingsAndZipsTests(unittest.TestCase):
                                         [self.release("v1", "2026-01-01T00:00:00Z")],
                                         listed=listed)
         self.assertEqual(app["name"], "Own")
-        self.assertTrue(any("listed/demo.pspdx is redundant" in line for line in log), log)
+        self.assertTrue(any("catalog/fallback/demo.pspdx is redundant" in line for line in log), log)
 
     def test_a_pinned_release_is_the_only_one_even_with_newer_ones(self):
         releases = [self.release("v3", "2026-03-01T00:00:00Z"),
@@ -665,15 +665,15 @@ class PinsListingsAndZipsTests(unittest.TestCase):
             items = look.plan(lines, str(folder), config.load())
             self.assertEqual([(label, one) for label, one, _ in items],
                              [("https://github.com/example/other", "io.github.example.other"),
-                              ("listed/a.pspdx", None),
-                              ("listed/b.pspdx", "io.github.example.demo")])
-            with self.assertRaisesRegex(look.Problem, "listed/a.pspdx is not JSON"):
+                              ("catalog/fallback/a.pspdx", None),
+                              ("catalog/fallback/b.pspdx", "io.github.example.demo")])
+            with self.assertRaisesRegex(look.Problem, "catalog/fallback/a.pspdx is not JSON"):
                 items[1][2](None)
             (folder / "c.pspdx").write_text(json.dumps(dict(self.SPEC, name="Again")))
-            with self.assertRaisesRegex(SystemExit, "already listed by listed/b.pspdx"):
+            with self.assertRaisesRegex(SystemExit, "already listed by catalog/fallback/b.pspdx"):
                 look.plan(lines, str(folder), config.load())
             (folder / "c.pspdx").unlink()
-            with self.assertRaisesRegex(SystemExit, "already listed by repos.txt"):
+            with self.assertRaisesRegex(SystemExit, "already listed by catalog/sources.txt"):
                 look.plan(lines + [("https://github.com/example/demo", "example", "demo", "")],
                           str(folder), config.load())
             self.assertEqual(len(look.plan(lines, str(folder / "nothing"), config.load())), 1)

@@ -67,7 +67,7 @@ UP = "../../"
 
 # The format catalog.json follows, as people read it: the standard's overview,
 # opened at the catalog, not this catalog's, so a copy rebranded through
-# catalog.config.json still points at the same page.
+# catalog/config.json still points at the same page.
 SCHEMA = "https://chriopter.github.io/pspdx/#catalog-v1"
 
 # What one PBP section is called on the page, and in which order the four are

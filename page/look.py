@@ -3,7 +3,7 @@
 fetches: one catalog.json, the pictures out of each EBOOT, and a page for
 whoever lands on the site.
 
-    look.py                    read repos.txt, write site/
+    look.py                    read catalog/sources.txt, write site/
     look.py --list <file>      another list
     look.py --out <dir>        write the site somewhere else
     look.py --listed <dir>     another folder of listed files
@@ -28,7 +28,7 @@ author's consent and their words; everything that changes is derived from the
 release and the EBOOT and never written by hand.
 
 A repository without a `.pspdx` can still be listed, by this catalog and on
-its word: a `.pspdx` for it in `listed/`. The moment the repository has a file of its own, that file is read
+its word: a `.pspdx` for it in `catalog/fallback/`. The moment the repository has a file of its own, that file is read
 and the listed one is redundant.
 
 A `.pspdx` may pin a release with `release`: then that release and no other
@@ -131,8 +131,10 @@ GITHUB = re.compile(r"https://github\.com/(?=[._-]*[A-Za-z0-9])([A-Za-z0-9_.-]{1
 # the schema.
 INSTALLDIR = re.compile(PSPDX["properties"]["installdir"]["pattern"])
 
-# The folder of .pspdx files this catalog keeps for repositories that have none.
-LISTED = "listed"
+# The folder of fallback .pspdx files this catalog keeps for repositories that
+# have none of their own -- a repo-relative path, since it names both where they
+# sit on disk and where a page links them on GitHub.
+LISTED = "catalog/fallback"
 
 # No string holds a control character: each of them lands on one line of a
 # screen or a page, where a tab or a carriage return is a hole in the layout
@@ -754,7 +756,7 @@ def entry(url, owner, repo, tag, known, listed=None):
     for it, or a Problem saying why it is not listed. `known` is what the
     published catalog says about this id, and is used when the newest release
     it names is still the newest GitHub names. `listed` is a file out of
-    listed/ for a repository that has no .pspdx of its own.
+    catalog/fallback/ for a repository that has no .pspdx of its own.
 
     Several of these run at once, so it says nothing itself: what it has to
     report it hands back, and the caller prints it in the list's order."""
@@ -904,7 +906,7 @@ def entry(url, owner, repo, tag, known, listed=None):
         "_media": media,
         "_raw": raw,
         # Where the file that consented to all of this can be read, at the ref
-        # it was read at, or in this catalog's listed/. The page links it so
+        # it was read at, or in this catalog's catalog/fallback/. The page links it so
         # that whoever wonders where a name or a summary came from reads it at
         # its source.
         "_pspdx": where,
@@ -973,7 +975,7 @@ def elsewhere(listed, known):
 # --- listed files -----------------------------------------------------------
 
 def read_listed(path, settings):
-    """One file out of listed/, as entry and elsewhere take it, or the Problem
+    """One file out of catalog/fallback/, as entry and elsewhere take it, or the Problem
     that keeps it out. It is held to the rules a repository's .pspdx is held
     to."""
     name = f"{LISTED}/{os.path.basename(path)}"
@@ -1006,16 +1008,16 @@ def refuse(problem):
 
 def plan(lines, directory, settings):
     """Everything this run reads, as (label, id, how): the list's lines, and
-    after them every file in listed/ in the order of their names.
+    after them every file in catalog/fallback/ in the order of their names.
 
     What is wrong between them is the curator's to fix and is known before
     anything is fetched, so it stops the run: two files for one app, or a
-    repository both on the list and in listed/. A file that breaks the rules
+    repository both on the list and in catalog/fallback/. A file that breaks the rules
     of a .pspdx is only that file's problem, and is left out with its reason
     as a broken repository is."""
     items, seen = [], {}
     for url, owner, repo, tag in lines:
-        seen[ident(owner, repo)] = "repos.txt"
+        seen[ident(owner, repo)] = "catalog/sources.txt"
         items.append((url + (f"@{tag}" if tag else ""), ident(owner, repo),
                       lambda known, line=(url, owner, repo, tag): entry(*line, known)))
     names = sorted(f for f in os.listdir(directory)
@@ -1092,7 +1094,7 @@ def write_site(apps, broken, catalog, out, listing=None, notes=None):
     text = json.dumps(catalog, ensure_ascii=False, separators=(",", ":"))
     with open(os.path.join(out, "catalog.json"), "w", encoding="utf-8") as file:
         file.write(text + "\n")
-    shutil.copyfile(listing or os.path.join(HERE, "repos.txt"),
+    shutil.copyfile(listing or os.path.join(HERE, "catalog", "sources.txt"),
                     os.path.join(out, "catalog.txt"))
     # The site is more than one file now: the tiles, a page an app, and the
     # style and the wave they share, so the pages write themselves. It comes
@@ -1233,7 +1235,7 @@ def output(name, value):
 
 
 def main(argv):
-    listing, out = os.path.join(HERE, "repos.txt"), os.path.join(HERE, "site")
+    listing, out = os.path.join(HERE, "catalog", "sources.txt"), os.path.join(HERE, "site")
     folder = os.path.join(HERE, LISTED)
     while argv:
         if argv[0] == "--list" and len(argv) > 1:

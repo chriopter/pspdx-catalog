@@ -4,7 +4,7 @@ import os
 from urllib.parse import urlparse
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-FILE = os.path.join(ROOT, "catalog.config.json")
+FILE = os.path.join(ROOT, "catalog", "config.json")
 FIELDS = {"name", "description", "site_url", "repository_url"}
 
 
