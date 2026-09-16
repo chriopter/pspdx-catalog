@@ -2,6 +2,9 @@
 
 An example catalog using the [PSPDX standard](https://chriopter.github.io/pspdx/),
 rebuilt every hour.
+The apps are the repositories listed in [`catalog/sources.txt`](catalog/sources.txt);
+one that ships no `.pspdx` of its own is described from
+[`catalog/fallback/`](catalog/fallback/), like the abandoned demo.
 Icon, screenshot, video and sound are extracted from each app's EBOOT
 (`ICON0.PNG`, `PIC1.PNG`, `ICON1.PMF`, `SND0.AT3`), so lists load with artwork, fast.
 
