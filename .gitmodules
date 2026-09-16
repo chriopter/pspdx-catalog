@@ -1,0 +1,3 @@
+[submodule "pspdx"]
+	path = pspdx
+	url = https://github.com/chriopter/pspdx.git

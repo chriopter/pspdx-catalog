@@ -1,38 +1,26 @@
-"""look.validate reads the rules of schema/pspdx-v1.json by hand, so that an
-author gets a sentence. Here the two are asked the same questions: a table of
-files, one for every rule the format has and most of them broken, and each
-must be judged the same by both, and as the table says. The table is the
-format as pspdx states it in README.md "Fields" and enforces it on the console
-in app/update/pspdx.c, so a rule both sides forgot is caught as well as one
-they disagree on.
+"""look.validate holds a .pspdx to schema/pspdx-v1.json, the vendored schema,
+and so does the reader in the console. Here a table of files, one for every
+rule the format has and most of them broken, is judged by the schema and must
+come out as the table says: a rule the schema forgot is caught as well as a
+file the reader would wave through. The table is the format as pspdx states it
+in README.md "Fields" and enforces it on the console in app/update/pspdx.c.
 
-The schemas are the published ones, as check_schema.py reads them. To try a
-schema before it is pushed:
+The schema is the one in the `pspdx` submodule, the same the reader loads. To
+try a schema before the submodule is bumped:
 
     PSPDX_SCHEMA_DIR=../pspdx/schema python3 -m unittest test_schema_drift
 """
 import json
-import os
 import unittest
 
+import check_schema
 import look
-
-try:
-    import check_schema
-except ImportError:
-    check_schema = None
-
-# The workflow installs requirements.txt before the tests, so there a missing
-# module is a broken step and must fail; on a bare checkout it only skips.
-NEEDED = bool(os.environ.get("CI"))
-
-DIRECTORY = os.environ.get("PSPDX_SCHEMA_DIR")
 
 # The fields the catalog repeats word for word. The install directory is
 # repeated by its rule alone: the file may leave it out, the catalog may not,
 # and each schema says which in its own description.
-FIELDS = ("name", "author", "summary", "type", "category", "tags", "license", "description",
-          "source")
+FIELDS = ("name", "author", "summary", "type", "category", "tags", "languages", "license",
+          "description", "source")
 SAME_RULE = ("installdir",)
 # The fields only a file has: a pinned release becomes the catalog's
 # releases, which the builder fills in.
@@ -377,8 +365,8 @@ ENTRY_CASES = [
 
 
 # A time a catalog carries is one the calendar has: a release's, which may be
-# a bare date, and the catalog's own, which is a UTC second. look.moment is the
-# builder's word on a pinned release's.
+# a bare date, and the catalog's own, which is a UTC second. The schema's date
+# and date-time formats are what judge a pinned release's.
 DATE_CASES = [
     ("2024-02-29T12:00:00Z", True),
     ("2023-02-29T12:00:00Z", False),
@@ -405,16 +393,13 @@ ID_CASES = [
 ]
 
 
-def where(url):
-    return os.path.join(DIRECTORY, url.rsplit("/", 1)[1]) if DIRECTORY else url
-
-
-@unittest.skipIf(check_schema is None and not NEEDED, "jsonschema is not installed")
 class SchemaDriftTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.pspdx = check_schema.load(where(look.PSPDX_SCHEMA))
-        cls.catalog = check_schema.load(where(look.SCHEMA))
+        # The very schemas look.py reads, vendored, so the tests need no
+        # network; PSPDX_SCHEMA_DIR, which look.py honours, tries an unpushed one.
+        cls.pspdx = look.PSPDX
+        cls.catalog = look.CATALOG
 
     def test_look_and_the_schema_judge_every_case_as_the_format_does(self):
         self.assertEqual(self.pspdx["$schema"], "https://json-schema.org/draft/2020-12/schema")
@@ -435,39 +420,28 @@ class SchemaDriftTests(unittest.TestCase):
                 self.assertEqual((said == "accepted", not found), (reader, valid),
                                  f"look.py: {said}; schema: {found or 'accepted'}")
 
+    def test_every_field_says_whether_it_may_be_left_out(self):
+        # The reader reads REQUIRED off the schema, so the two cannot disagree;
+        # what is worth holding is that each field's description says plainly
+        # whether it is required, since that is what an author reads.
+        for key, value in self.pspdx["properties"].items():
+            with self.subTest(key):
+                self.assertTrue(value.get("description", "").startswith(
+                    "required" if key in self.pspdx["required"] else "optional"))
+
     def test_a_pinned_release_is_held_as_a_catalog_release(self):
+        # A file's pinned release becomes a catalog release, so the two schemas,
+        # kept apart in the format, must say the same of tag, url and
+        # published_at, rule for rule.
         pin = self.pspdx["properties"]["release"]
         release = self.catalog["$defs"]["release"]["properties"]
         self.assertFalse(pin["additionalProperties"])
         self.assertEqual(pin["required"], ["tag"])
-        self.assertEqual(set(pin["properties"]), set(look.RELEASE_KEYS))
-        for key in look.RELEASE_KEYS:
+        for key in pin["properties"]:
             with self.subTest(key):
                 self.assertEqual({k: v for k, v in pin["properties"][key].items()
                                   if k != "description"},
                                  {k: v for k, v in release[key].items() if k != "description"})
-        self.assertEqual(release["url"]["maxLength"], look.URL)
-
-    def test_the_tables_in_look_are_the_schemas(self):
-        properties = self.pspdx["properties"]
-        self.assertEqual(self.pspdx["$id"], look.PSPDX_SCHEMA)
-        self.assertEqual(properties["schema"]["const"], look.PSPDX_SCHEMA)
-        self.assertFalse(self.pspdx["additionalProperties"])
-        self.assertEqual(set(properties), set(look.KEYS))
-        self.assertEqual(set(self.pspdx["required"]), set(look.REQUIRED))
-        self.assertEqual(properties["type"]["enum"], list(look.TYPES))
-        self.assertEqual(properties["type"]["default"], look.HOMEBREW)
-        self.assertEqual((properties["tags"]["maxItems"], properties["tags"]["items"]["maxLength"],
-                          properties["tags"]["items"]["minLength"]), (look.TAGS, look.TAG, 1))
-        self.assertTrue(properties["tags"]["uniqueItems"])
-        self.assertEqual({key: value["maxLength"] for key, value in properties.items()
-                          if "maxLength" in value}, look.LIMITS)
-        # Every field says what it is and whether it may be left out.
-        for key, value in properties.items():
-            with self.subTest(key):
-                self.assertTrue(value.get("description", "").startswith(
-                    "required" if key in look.REQUIRED else "optional"))
-        self.assertEqual(self.catalog["$id"], look.SCHEMA)
 
     def test_the_catalog_repeats_the_fields_as_they_are(self):
         app = self.catalog["$defs"]["app"]["properties"]
@@ -518,7 +492,7 @@ class SchemaDriftTests(unittest.TestCase):
                 catalog = {"schema": look.SCHEMA, "generated_at": "2026-09-12T00:00:00Z",
                            "apps": [dict(ENTRY, releases=[release])]}
                 found = check_schema.problems(catalog, self.catalog)
-                self.assertEqual((not found, look.moment(when)), (valid, valid), found)
+                self.assertEqual(not found, valid, found)
                 if "T" in when and (when, valid) in DATE_CASES:
                     found = check_schema.problems(dict(catalog, generated_at=when), self.catalog)
                     self.assertEqual(not found, valid, found)

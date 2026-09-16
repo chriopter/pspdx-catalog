@@ -6,7 +6,9 @@ import struct
 import tempfile
 import unittest
 import zipfile
+from unittest import mock
 
+import check_schema
 import config
 import look
 import page
@@ -56,14 +58,15 @@ class CatalogRegressionTests(unittest.TestCase):
             with self.subTest(repo=repo), self.assertRaisesRegex(look.Problem, "source"):
                 look.validate(dict(spec, source=repo))
         # The owner and the repository name an id, so each needs a letter or a
-        # digit, and a repository ending .git.git reads back as another.
-        for repo, reason in (("https://github.com/./demo", "owner"),
-                             ("https://github.com/example/..", "repository"),
-                             ("https://github.com/example/_.git", "repository"),
-                             ("https://github.com/" + "o" * 40 + "/demo", "at most 39"),
-                             ("https://github.com/example/" + "r" * 101, "at most 100"),
-                             ("https://github.com/example/demo.git.git", ".git.git")):
-            with self.subTest(repo=repo), self.assertRaisesRegex(look.Problem, reason):
+        # digit, and a repository ending .git.git reads back as another. The
+        # schema names which rule the "source" broke; here it is enough that it
+        # is the source that is refused.
+        for repo in ("https://github.com/./demo", "https://github.com/example/..",
+                     "https://github.com/example/_.git",
+                     "https://github.com/" + "o" * 40 + "/demo",
+                     "https://github.com/example/" + "r" * 101,
+                     "https://github.com/example/demo.git.git"):
+            with self.subTest(repo=repo), self.assertRaisesRegex(look.Problem, "source"):
                 look.validate(dict(spec, source=repo))
         for repo in ("https://github.com/example/demo", "https://example.com/demo",
                      "https://archive.org/details/psp-blocks", "https://example.com/" + "x" * 235):
@@ -112,12 +115,14 @@ class CatalogRegressionTests(unittest.TestCase):
             with self.subTest(changes=changes):
                 self.assertEqual(look.identity(dict(spec, **changes)), expected)
         look.validate(spec)
-        for changes, reason in (({"name": "★ ★"}, "no letter or digit"),
-                                ({"source": "https://-/"}, "host of"),
-                                ({"source": "https://例え.jp/"}, "punycode"),
-                                ({"source": "https://evil.example\\@wijsman.de/"}, "backslash"),
-                                ({"source": "https://example.github.io/"}, "github.io")):
-            with self.subTest(changes=changes), self.assertRaisesRegex(look.Problem, reason):
+        # A non-GitHub source whose host or name could make no id, or one under
+        # github.io whose id would be GitHub's: the schema states each rule, and
+        # the reader refuses the file.
+        for changes in ({"name": "★ ★"}, {"source": "https://-/"},
+                        {"source": "https://例え.jp/"},
+                        {"source": "https://evil.example\\@wijsman.de/"},
+                        {"source": "https://example.github.io/"}):
+            with self.subTest(changes=changes), self.assertRaises(look.Problem):
                 look.validate(dict(spec, **changes))
         # A GitHub source's id is the repository, so its name needs no letter.
         look.validate(dict(spec, source="https://github.com/a/b", name="★ ★"))
@@ -135,6 +140,17 @@ class CatalogRegressionTests(unittest.TestCase):
             with self.subTest(owner=owner, repo=repo), self.assertRaisesRegex(
                     look.Problem, '"source" must point to'):
                 look.check_source(spec, owner, repo)
+
+    def test_trim_summary_keeps_within_the_limit(self):
+        # A summary the schema caps at 60 must still fit once "..." is added, or
+        # a long GitHub description would fail the final catalog check.
+        self.assertEqual(look.trim("Short and sweet"), "Short and sweet")
+        for text in ("word " * 40, "x" * 200, "a " + "b" * 70, "no spaces " + "z" * 80):
+            with self.subTest(text=text[:20]):
+                cut = look.trim(text)
+                self.assertLessEqual(len(cut), look.SUMMARY)
+                self.assertTrue(cut.endswith("..."))
+                self.assertNotIn("  ", cut)
 
     def test_spdx_license_with_or_later_suffix(self):
         spec = {"schema": look.PSPDX_SCHEMA, "name": "Example",
@@ -222,6 +238,55 @@ class CatalogRegressionTests(unittest.TestCase):
                 self.assertNotIn(absent, text)
             self.assertIn("by example &middot; MIT", text)
 
+    def test_reusing_an_entry_does_not_mutate_the_published_catalog(self):
+        # again() takes an entry straight from the live catalog; shape() then
+        # rewrites its media paths. If the two shared a dict, the live catalog
+        # -- the base the new one is compared against -- would change under the
+        # comparison and a real change would read as none.
+        live = {"id": "io.github.example.demo", "name": "Demo",
+                "media": {"icon": "apps/io.github.example.demo/icon-00000000.png"},
+                "releases": [{"tag": "v1"}]}
+        reused = look.again(live, "where", "page")
+        reused["_media"] = {"icon": (".png", b"different bytes")}
+        look.shape([reused], "2026-09-12T00:00:00Z")
+        self.assertEqual(live["media"], {"icon": "apps/io.github.example.demo/icon-00000000.png"})
+        self.assertNotEqual(reused["media"]["icon"], live["media"]["icon"])
+
+    def test_a_catalog_that_empties_while_completing_is_not_deployed(self):
+        # complete() re-reads entries whose published media has gone; if they
+        # all break, apps empties out after the first check -- and then the
+        # site must be left alone, not overwritten with an empty catalog.
+        app = {"id": "io.github.example.demo", "name": "Demo",
+               "releases": [{"tag": "v1", "url": "https://x/demo.zip",
+                             "published_at": "2026-09-12T00:00:00Z",
+                             "size": 1, "sha256": "0" * 64, "md5": "0" * 32}]}
+        with tempfile.TemporaryDirectory() as directory:
+            output = os.path.join(directory, "out.txt")
+            with mock.patch.object(look, "memory", return_value=None), \
+                 mock.patch.object(look, "plan", return_value=[("u", "example", "demo", "")]), \
+                 mock.patch.object(look, "walk", return_value=([app], [])), \
+                 mock.patch.object(look, "complete",
+                                   return_value=([], [("example/demo", "media gone")])), \
+                 mock.patch.object(look, "write_site") as write, \
+                 mock.patch.dict(os.environ, {"GITHUB_OUTPUT": output}):
+                look.main(["--out", os.path.join(directory, "site")])
+            write.assert_not_called()
+            self.assertFalse(os.path.exists(os.path.join(directory, "site")))
+            wrote = pathlib.Path(output).read_text()
+            self.assertIn("changed=no", wrote)
+            self.assertIn("left_out=1", wrote)
+
+    def test_actions_name_the_source_only_github_as_github(self):
+        github = {"name": "Demo", "source": "https://github.com/example/demo",
+                  "releases": [{"url": "https://github.com/example/demo/releases/"
+                                       "download/v1/demo.zip"}]}
+        elsewhere = {"name": "Blocks", "source": "https://archive.org/details/psp-blocks",
+                     "releases": [{"url": "https://archive.org/download/psp-blocks/blocks.zip"}]}
+        self.assertIn("at GitHub", page.actions(github))
+        # A source elsewhere is never called GitHub.
+        self.assertNotIn("GitHub", page.actions(elsewhere))
+        self.assertIn("at its source", page.actions(elsewhere))
+
     def test_truncated_png_does_not_abort_page_generation(self):
         png = b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR"
         png += struct.pack(">II", 144, 80)
@@ -285,7 +350,7 @@ class CatalogRegressionTests(unittest.TestCase):
         for kind in ("plugin", "iso"):
             with self.subTest(kind=kind):
                 look.validate(dict(spec, type=kind))
-                with self.assertRaisesRegex(look.Problem, "only for type homebrew"):
+                with self.assertRaises(look.Problem):
                     look.validate(dict(spec, type=kind, installdir="PSP/GAME/Example"))
 
     def entry_with(self, spec):
@@ -394,11 +459,12 @@ class CatalogRegressionTests(unittest.TestCase):
         self.assertEqual(app["installdir"], "PSP/GAME/demo")
         self.assertNotIn("tags", app)
         self.assertNotIn("type", app)
+        self.assertNotIn("languages", app)
         self.assertEqual(app["description"], spec["description"])
         app, _ = self.entry_with(dict(spec, type="homebrew", tags=["Jeu de rôle", "game"],
-                                      installdir="PSP/GAME/Example"))
-        self.assertEqual((app["type"], app["tags"], app["installdir"]),
-                         ("homebrew", ["Jeu de rôle", "game"], "PSP/GAME/Example"))
+                                      languages=["en", "pt-br"], installdir="PSP/GAME/Example"))
+        self.assertEqual((app["type"], app["tags"], app["languages"], app["installdir"]),
+                         ("homebrew", ["Jeu de rôle", "game"], ["en", "pt-br"], "PSP/GAME/Example"))
         # A page for an entry without tags is still a page.
         app, _ = self.entry_with(spec)
         with tempfile.TemporaryDirectory() as directory:
@@ -406,16 +472,9 @@ class CatalogRegressionTests(unittest.TestCase):
             look.write_site([app], [], catalog, directory)
             self.assertIn("Example", (pathlib.Path(directory) / "apps" / app["id"]
                                       / "index.html").read_text())
-            try:
-                import check_schema
-            except ImportError:
-                if os.environ.get("CI"):
-                    raise
-                return
-            schema = check_schema.load(os.path.join(os.environ["PSPDX_SCHEMA_DIR"],
-                                                    "catalog-v1.json")
-                                       if os.environ.get("PSPDX_SCHEMA_DIR") else look.SCHEMA)
-            self.assertEqual(check_schema.problems(catalog, schema), [])
+            # The built catalog holds to the vendored catalog schema, the one
+            # look.py reads, so this needs no network.
+            self.assertEqual(check_schema.problems(catalog, look.CATALOG), [])
 
 
 class PinsListingsAndZipsTests(unittest.TestCase):
@@ -566,13 +625,13 @@ class PinsListingsAndZipsTests(unittest.TestCase):
         # source under github.io has none: it would be under io.github., which
         # is GitHub's.
         with tempfile.TemporaryDirectory() as directory:
-            with self.assertRaisesRegex(look.Problem, "github.io"):
+            with self.assertRaises(look.Problem):
                 self.listed_file(directory, "blocks.pspdx",
                                  dict(spec, source="https://example.github.io/blocks"))
             listed = self.listed_file(directory, "blocks.pspdx", spec)
-            with self.assertRaisesRegex(look.Problem, 'outside GitHub pins its "release"'):
+            with self.assertRaisesRegex(look.Problem, "release"):
                 self.listed_file(directory, "bare.pspdx", dict(spec, release={"tag": "1.0"}))
-            with self.assertRaisesRegex(look.Problem, "after the start of 1970"):
+            with self.assertRaisesRegex(look.Problem, "published_at"):
                 self.listed_file(directory, "old.pspdx",
                                  dict(spec, release=dict(spec["release"], published_at="1970-01-01")))
             # A field version 1 does not name, as listed_by once was, is passed over.
@@ -593,15 +652,8 @@ class PinsListingsAndZipsTests(unittest.TestCase):
         with self.assertRaisesRegex(look.Problem, 'built only with a pinned "release"'):
             self.run_entry(None, [], listed=dict(listed, spec={k: v for k, v in listed["spec"].items()
                                                               if k != "release"}))
-        try:
-            import check_schema
-        except ImportError:
-            if os.environ.get("CI"):
-                raise
-            return
-        schema = check_schema.load(os.path.join(os.environ["PSPDX_SCHEMA_DIR"], "catalog-v1.json")
-                                   if os.environ.get("PSPDX_SCHEMA_DIR") else look.SCHEMA)
-        self.assertEqual(check_schema.problems(look.shape([app], "2026-09-12T00:00:00Z"), schema), [])
+        self.assertEqual(
+            check_schema.problems(look.shape([app], "2026-09-12T00:00:00Z"), look.CATALOG), [])
 
     def test_the_plan_reads_listed_files_and_stops_on_a_curators_mistake(self):
         lines = [("https://github.com/example/other", "example", "other", "")]

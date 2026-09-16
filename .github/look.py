@@ -34,12 +34,17 @@ and the listed one is redundant.
 A `.pspdx` may pin a release with `release`: then that release and no other
 is listed, and nothing newer is looked for until the file changes.
 
-Nothing but the standard library, on purpose: this runs in a workflow and
-should keep running in ten years. The `.pspdx` is checked by hand against the
-rules in schema/pspdx-v1.json rather than handed to a validator module, for the
-same reason, and because a reason that reads like a sentence is what an
-author needs to fix their file."""
+A `.pspdx` is held to schema/pspdx-v1.json, the format's own rule, vendored as
+the `pspdx` submodule and read from there rather than fetched: a build
+validates against exactly the version this repository is pinned to, never the
+moving published one. The validation lives in that schema alone -- the reader
+holds a file to it rather than restating the rules -- and check_schema.py holds
+the built catalog to the catalog schema before it is published. The one thing
+still written in Python is the shape of a github.com URL (GITHUB below), and
+only because the owner and repository an id is made of are parsed out of it;
+it says as much where it is defined."""
 import concurrent.futures
+import copy
 import hashlib
 import io
 import json
@@ -54,6 +59,7 @@ import urllib.request
 import zipfile
 from datetime import datetime, timezone
 
+import check_schema
 import config
 import page
 
@@ -72,80 +78,61 @@ FORCE = os.environ.get("FORCE", "") == "1"
 # plenty: the wait is the network, not this process.
 WORKERS = 8
 
-# The catalog names itself: a file found on a stick years from now says where
-# it came from and which version of the format it is.
-SCHEMA = "https://chriopter.github.io/pspdx/schema/catalog-v1.json"
+# The format itself, vendored as the `pspdx` submodule: the single source of
+# every rule below. The reader validates a .pspdx against PSPDX rather than
+# spelling the rules out a second time, and the few things it still needs by
+# name -- which keys a version 1 file has, which are required, what a release
+# may say, the id of each schema -- are read off the schema, so they cannot
+# drift from it. PSPDX_SCHEMA_DIR points the reader at an unpushed schema to
+# try one before the submodule is bumped.
+def _schema(name):
+    directory = os.environ.get("PSPDX_SCHEMA_DIR") or check_schema.SCHEMA_DIR
+    with open(os.path.join(directory, name), encoding="utf-8") as source:
+        return json.load(source)
 
-# What a .pspdx must say in its `schema` line to be a version 1 file. A
-# version 2 gets a new name, so an old file is never wrong, only old.
-PSPDX_SCHEMA = "https://chriopter.github.io/pspdx/schema/pspdx-v1.json"
 
-# A repository URL as the console reads one, matched whole: an owner of 1 to
-# 39 and a repository of 1 to 100 of [A-Za-z0-9_.-], a .git and a slash after
-# it allowed. Each needs a letter or digit, the repository besides the .git it
-# ends in, since the id is made of those; that also keeps out . and .. . And
-# <name>.git.git would be written back as <name>.git, another repository.
-# SHAPE is only the outline, so that `repository` can say which rule is broken.
-SHAPE = re.compile(r"https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)/?")
+PSPDX = _schema("pspdx-v1.json")
+CATALOG = _schema("catalog-v1.json")
+# The catalog's id: a file found on a stick years from now says where it came
+# from and which version of the format it is.
+SCHEMA = CATALOG["$id"]
+# What a .pspdx must say in its `schema` line to be a version 1 file. A version
+# 2 gets a new name, so an old file is never wrong, only old.
+PSPDX_SCHEMA = PSPDX["$id"]
+# The fields version 1 names, the ones it requires, and what a pinned release
+# may say: read off the schema so a new field is known the moment it is added.
+KEYS = tuple(PSPDX["properties"])
+REQUIRED = tuple(PSPDX["required"])
+RELEASE_KEYS = tuple(PSPDX["properties"]["release"]["properties"])
+# homebrew when a file names no type; the length a summary is trimmed to.
+HOMEBREW = PSPDX["properties"]["type"]["default"]
+SUMMARY = PSPDX["properties"]["summary"]["maxLength"]
+# The optional fields a catalog entry repeats from the file verbatim when the
+# file gives them -- everything else is derived, filled in or renamed. Both
+# builders (GitHub and elsewhere) copy exactly these, so the list is one.
+CARRIED = ("type", "category", "tags", "languages")
+
+# A repository URL as the console reads one, matched whole and read for the id:
+# an owner of 1 to 39 and a repository of 1 to 100 of [A-Za-z0-9_.-], a .git and
+# a slash after it allowed. Each needs a letter or digit, the repository besides
+# the .git it ends in, since the id is made of those; that also keeps out . and
+# .. . And <name>.git.git would be written back as <name>.git, another
+# repository. The schema holds a source to this same rule; here it is the two
+# groups the builder reads owner and repository out of.
 GITHUB = re.compile(r"https://github\.com/(?=[._-]*[A-Za-z0-9])([A-Za-z0-9_.-]{1,39})/"
                     r"(?=[._-]*[A-Za-z0-9])(?![._-]+\.git/?\Z)(?![A-Za-z0-9_.-]+\.git\.git/?\Z)"
                     r"(?=[A-Za-z0-9_.-]{1,100}/?\Z)([A-Za-z0-9_.-]+?)(?:\.git)?/?")
 
-# The rules out of schema/pspdx-v1.json, by hand. The install directory is
-# matched whole, because the schema's `$` is the end of the string and
-# Python's is not quite. The folder does not end in a dot, which FAT drops:
-# PSP/GAME/Demo. would be PSP/GAME/Demo on the stick, and PSP/GAME/.. the
-# folder above. It is not .pspdx-stage in any case: the client unpacks every
-# install there first, and the stick does not tell the cases apart.
-# test_schema_drift.py holds these to the schema, case by case.
-INSTALLDIR = re.compile(r"PSP/GAME/(?!(?i:\.pspdx-stage)\Z)[A-Za-z0-9_.-]{0,31}[A-Za-z0-9_-]")
-
-# A source outside GitHub: an https:// URL whose host is ASCII with a letter
-# or digit in every label, since there the id is made of them and a label of
-# none would drop out and leave another host's id. A name in another script
-# is written in punycode. Who logs in and the port may be there; a backslash
-# may not, since a browser reads it as a slash and the host would be another.
-# A host of only www. is none.
-LABEL = r"-*[A-Za-z0-9][A-Za-z0-9-]*"
-HOST = re.compile(r"https://(?:[^/?#\\\x00-\x1f]*@)?(?!(?i:www)\.(?:[:/?#]|\Z))"
-                       rf"(?:{LABEL}\.)*{LABEL}\.?(?::[0-9]*)?(?:[/?#][^\\\x00-\x1f]*)?")
-# io.github. starts the ids of GitHub repositories, so a source under
-# github.io, whose host backwards would start its id, gives none. The dashes an id drops are passed over here too.
-GITHUB_IO = re.compile(r"https://(?:[^/?#\\]*@)?(?![^/?#\\]*@)(?:[A-Za-z0-9-]*\.)*"
-                       r"-*g-*i-*t-*h-*u-*b-*\.-*i-*o-*\.?(?:[:/?#]|\Z)", re.IGNORECASE)
-
-# What a file can be. A homebrew is an EBOOT under PSP/GAME and is the one
-# this catalog can check; the other two need other checks than a release with
-# an EBOOT in it, and a file that says it is one of them is not wrong, only
-# early. A file that says nothing is a homebrew.
-TYPES = ("homebrew", "plugin", "iso")
-HOMEBREW = "homebrew"
-
-# The file's keys, which of them must be there, and the longest each string
-# may be. The caps are the schema's: a name fits the XMB, a summary fits one
-# line of a 480 pixel screen, and a list's address fits the URL slot the
-# console has for every other address.
-KEYS = ("schema", "source", "name", "type", "category", "tags", "installdir", "summary",
-        "author", "license", "description", "release")
-REQUIRED = ("schema", "source", "name")
-LIMITS = {"source": 255, "name": 40, "category": 24, "summary": 60, "author": 60,
-          "license": 60, "description": 2500}
-
-# What a pinned release may say, and how long its link may be: the rules of a
-# catalog's release, since it becomes one. The size and the hashes are no part
-# of it; the builder computes them and a hand never writes them.
-RELEASE_KEYS = ("tag", "url", "published_at")
-URL = 512
-URI = re.compile(r"https://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]+")
-# A release is dated after the start of 1970, where a console's seconds begin.
-WHEN = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}(T[0-9]{2}:[0-9]{2}:[0-9]{2}Z)?")
+# The schema's own rule for an installdir, compiled from it: the reader holds
+# the folder it derives for a homebrew that names none to the very same rule
+# the schema holds an installdir a file gives, so the derived one cannot pass
+# where a written one would fail. The rule (anchored, no trailing dot which FAT
+# drops, never .pspdx-stage where the client stages an install) lives only in
+# the schema.
+INSTALLDIR = re.compile(PSPDX["properties"]["installdir"]["pattern"])
 
 # The folder of .pspdx files this catalog keeps for repositories that have none.
 LISTED = "listed"
-
-# Tags say what an app is in as many words as it takes, up to eight, each a
-# word or two long; the console makes a tab of the ones it knows.
-TAGS, TAG = 8, 24
 
 # No string holds a control character: each of them lands on one line of a
 # screen or a page, where a tab or a carriage return is a hole in the layout
@@ -225,34 +212,6 @@ def ident(owner, repo):
                                    for part in (owner, repo))
 
 
-def repository(source):
-    """The owner and repository of a source on github.com, as GITHUB reads
-    them, or the Problem that names the rule it breaks."""
-    shape = SHAPE.fullmatch(source)
-    if not shape:
-        raise Problem('.pspdx: "source" on github.com must be a repository URL, '
-                      "https://github.com/<owner>/<repository>")
-    owner, name = shape.groups()
-    if len(owner) > 39:
-        raise Problem(f'.pspdx: the owner in "source" is {len(owner)} characters, at most 39')
-    if len(name) > 100:
-        raise Problem(f'.pspdx: the repository in "source" is {len(name)} characters, at most 100')
-    if len(name) > 8 and name.endswith(".git.git"):
-        raise Problem('.pspdx: the repository in "source" ends in .git.git, which is written '
-                      "back without one .git as another repository")
-    if len(name) > 4 and name.endswith(".git"):
-        name = name[:-4]
-    for what, part in (("owner", owner), ("repository", name)):
-        if not plain(part):
-            raise Problem(f'.pspdx: the {what} in "source", {part!r}, has no letter or digit '
-                          "to make an id of")
-    found = GITHUB.fullmatch(source)
-    if not found:
-        raise Problem('.pspdx: "source" on github.com must be a repository URL, '
-                      "https://github.com/<owner>/<repository>")
-    return found.groups()
-
-
 def plain(text):
     """One part of an id: the letters and digits of text, in lower case. The
     ASCII ones only, stripped before the case is changed, so that a letter
@@ -293,12 +252,14 @@ def identity(spec):
     return None if one.startswith("io.github.") else one
 
 
-def trim(text, limit=LIMITS["summary"]):
-    """A summary cut mid-word reads like a bug. Cut on a space instead."""
+def trim(text, limit=SUMMARY):
+    """A summary cut mid-word reads like a bug. Cut on a space instead, and
+    keep the "..." within the limit so the trimmed line still fits where the
+    schema says a summary must."""
     text = " ".join(text.split())
     if len(text) <= limit:
         return text
-    return text[:limit].rsplit(" ", 1)[0].rstrip(",.;:") + "..."
+    return text[:limit - 3].rsplit(" ", 1)[0].rstrip(",.;:") + "..."
 
 
 def sha256(data):
@@ -412,128 +373,32 @@ def repos(path):
 # --- the file ---------------------------------------------------------------
 
 def validate(data):
-    """The rules of schema/pspdx-v1.json, one at a time, and the first one broken
-    as a Problem. Written out rather than fed to a validator so that the
-    reason reads like a sentence: a misspelt key is named, a long summary
-    says how long it may be."""
+    """A .pspdx as this version reads it: the fields version 1 names, each held
+    to schema/pspdx-v1.json. A field the version does not name is ignored, as
+    every reader ignores one, so a file written for a later version still says
+    all this one needs; `ignored` names it in the log for an author who
+    misspelt a field. The schema is the whole rule, checked against the file,
+    and a Problem carries the first place it breaks."""
     if not isinstance(data, dict):
         raise Problem(".pspdx is not a JSON object")
-    # A field version 1 does not name is ignored, as every reader of the
-    # format ignores it: a file written for a later version still says all
-    # this one needs. It is never copied on, and `ignored` names it in the
-    # log so an author who misspelt a field still finds out.
     data = {key: value for key, value in data.items() if key in KEYS}
-    for key in REQUIRED:
-        if key not in data:
-            raise Problem(f".pspdx: no {key!r}")
-    if data["schema"] != PSPDX_SCHEMA:
-        raise Problem(f'.pspdx: "schema" must be {PSPDX_SCHEMA}')
-    for key, limit in LIMITS.items():
-        if key in data:
-            value = data[key]
-            if not isinstance(value, str):
-                raise Problem(f".pspdx: {key!r} is not a string")
-            if len(value) > limit:
-                raise Problem(f".pspdx: {key!r} is {len(value)} characters, "
-                              f"at most {limit}")
-            if (PARAGRAPHS if key == "description" else CONTROL).search(value):
-                raise Problem(f".pspdx: {key!r} holds a control character"
-                              + ("; a newline is the only one it may"
-                                 if key == "description" else ""))
-    # Any https:// address may be where a project lives: a mirror of
-    # something abandoned is rarely on GitHub. One on github.com is held to
-    # being a repository, because that is what the id, the default folder
-    # and the releases are read out of.
-    source = data["source"]
-    if not source.startswith("https://") or source == "https://":
-        raise Problem('.pspdx: "source" must be an https:// URL')
-    if source.startswith("https://github.com/"):
-        repository(source)
-    if not data["name"]:
-        raise Problem('.pspdx: "name" is empty')
-    # The category is the one group the app belongs in, a word like a tag;
-    # an empty one names none.
-    if data.get("category") == "":
-        raise Problem('.pspdx: "category" is empty')
-    if "tags" in data:
-        tags = data["tags"]
-        if not isinstance(tags, list) or len(tags) > TAGS:
-            raise Problem(f'.pspdx: "tags" is a list of at most {TAGS} words')
-        for tag in tags:
-            if not isinstance(tag, str) or not 1 <= len(tag) <= TAG or CONTROL.search(tag):
-                raise Problem(f'.pspdx: a tag is 1 to {TAG} characters and no control '
-                              f"character, not {tag!r}")
-        if len(set(tags)) != len(tags):
-            raise Problem('.pspdx: "tags" names a word twice')
-    kind = data.get("type", HOMEBREW)
-    if kind not in TYPES:
-        raise Problem('.pspdx: "type" is one of ' + ", ".join(TYPES))
-    # Outside GitHub the id is the source's host and the name, so a file
-    # without either has no id and describes no app anyone could find.
-    if not GITHUB.fullmatch(source):
-        if "\\" in source:
-            raise Problem('.pspdx: "source" outside GitHub holds a backslash, which a browser '
-                          "reads as a slash")
-        if not HOST.fullmatch(source):
-            raise Problem('.pspdx: the host of "source" is ASCII letters, digits and hyphens '
-                          "with a letter or digit in every label; a name in another script is "
-                          "written in punycode (xn--)")
-        if not plain(data["name"]):
-            raise Problem('.pspdx: "name" has no letter or digit to make an id of')
-        if GITHUB_IO.match(source):
-            raise Problem('.pspdx: "source" is under github.io, and outside GitHub its host '
-                          "would make an id under io.github., which only a GitHub repository has")
-        if identity(data) is None:
-            raise Problem('.pspdx: "source" has no host to make an id of')
-    if "release" in data:
-        data["release"] = pinned(data["release"], GITHUB.fullmatch(source) is not None)
-    if "installdir" in data:
-        if kind != HOMEBREW:
-            raise Problem(f'.pspdx: "installdir" is only for type homebrew, not {kind}')
-        if not isinstance(data["installdir"], str) \
-                or not INSTALLDIR.fullmatch(data["installdir"]):
-            raise Problem('.pspdx: "installdir" is PSP/GAME/ and 1 to 32 of '
-                          "[A-Za-z0-9_.-], not ending in a dot and not .pspdx-stage, in version 1")
-    elif kind == HOMEBREW:
+    # The one nested object; the unknown keys of a release are passed over as
+    # the file's own are. Anything but an object is left for the schema to
+    # refuse, so its type is named.
+    if isinstance(data.get("release"), dict):
+        data["release"] = {key: value for key, value in data["release"].items()
+                           if key in RELEASE_KEYS}
+    found = check_schema.problems(data, PSPDX)
+    if found:
+        raise Problem(f".pspdx: {found[0]}")
+    # The schema holds an `installdir` the file gives; a homebrew that gives
+    # none still needs the folder derived from its name or repository to be a
+    # real one, not empty or the staging folder. Only the builder derives it,
+    # and a run that reuses a published entry never reaches that, so the one
+    # rule the schema cannot see is checked here.
+    if data.get("type", HOMEBREW) == HOMEBREW and "installdir" not in data:
         installdir(data)
     return data
-
-
-def pinned(pin, github):
-    """A `release` as validate keeps it: the known keys, each held to its
-    rule. On GitHub the tag is enough, and the release says the rest; anywhere
-    else nothing can be asked, so the file says where the zip is and when it
-    was published."""
-    if not isinstance(pin, dict):
-        raise Problem('.pspdx: "release" is an object with a "tag"')
-    pin = {key: value for key, value in pin.items() if key in RELEASE_KEYS}
-    tag = pin.get("tag")
-    if not isinstance(tag, str) or not 1 <= len(tag) <= 64 or CONTROL.search(tag):
-        raise Problem('.pspdx: "release" needs a "tag" of 1 to 64 characters '
-                      "and no control character")
-    if "url" in pin and not (isinstance(pin["url"], str) and len(pin["url"]) <= URL
-                             and URI.fullmatch(pin["url"])):
-        raise Problem(f'.pspdx: release "url" is an https:// URL of at most {URL} characters')
-    if "published_at" in pin and not moment(pin["published_at"]):
-        raise Problem('.pspdx: release "published_at" is a UTC time like '
-                      "2024-12-20T14:03:00Z, or a date like 2024-12-20, after the start of 1970")
-    if not github and not {"url", "published_at"} <= set(pin):
-        raise Problem('.pspdx: a "source" outside GitHub pins its "release" '
-                      'with "url" and "published_at"')
-    return pin
-
-
-def moment(text):
-    """Whether text is a published_at a catalog may carry: a UTC second with
-    its Z, or a bare date, one the calendar has and after the start of 1970:
-    a console counts seconds from then, and 0 is no time."""
-    if not isinstance(text, str) or not WHEN.fullmatch(text):
-        return False
-    try:
-        when = datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ" if "T" in text else "%Y-%m-%d")
-    except ValueError:
-        return False
-    return when.replace(tzinfo=timezone.utc).timestamp() > 0
 
 
 def ignored(raw):
@@ -770,8 +635,12 @@ def again(known, where, release_page):
 
     Nothing here is derived a second time: the release is the one that was
     read the day this entry was written, so re-reading the .pspdx and the zip
-    would cost another ZIP download; manifest-only edits await a forced run."""
-    app = dict(known)
+    would cost another ZIP download; manifest-only edits await a forced run.
+
+    A deep copy, because this entry is `live`'s own: shape() rewrites its media
+    paths in place later, and `live` is the base the new catalog is compared
+    against, which a shared dict would quietly change under the comparison."""
+    app = copy.deepcopy(known)
     app["_pspdx"] = where
     app["_page"] = release_page
     # No `_said`: which fields the author wrote and which fell back to GitHub
@@ -1022,7 +891,7 @@ def entry(url, owner, repo, tag, known, listed=None):
         # The words nothing stands in for: a file that gives no tags, no
         # type, no category or no description is an entry without them, not
         # one with a guess.
-        **{key: spec[key] for key in ("type", "category", "tags") if key in spec},
+        **{key: spec[key] for key in CARRIED if key in spec},
         # Always there for a homebrew, derived where the file said nothing,
         # so that a console reading the catalog never has to know the rule.
         "installdir": installdir(spec),
@@ -1083,7 +952,7 @@ def elsewhere(listed, known):
         "id": identity(spec),
         "source": spec["source"],
         "name": spec["name"],
-        **{key: spec[key] for key in ("type", "category", "tags") if key in spec},
+        **{key: spec[key] for key in CARRIED if key in spec},
         "installdir": installdir(spec),
         # Nothing to fall back on out here: what the file does not say, the
         # entry says empty.
@@ -1387,6 +1256,11 @@ def main(argv):
     items = plan(repos(listing), folder, config.load())
     apps, broken = walk(items, known)
     apps.sort(key=lambda app: app["id"])
+    # The media of the reused entries, fetched now that a deploy is likely. A
+    # re-read can still drop an entry, so what the catalog holds is settled
+    # only here -- and the emptiness check and the change notes must come after.
+    if apps:
+        apps, broken = complete(apps, broken, items)
     # shape also assigns the public media paths before the comparison.
     catalog = shape(apps, generated) if apps else None
     notes = changes(catalog["apps"], live) if catalog else []
@@ -1406,10 +1280,8 @@ def main(argv):
         moved = FORCE or unlike(catalog, live)
         print("apps changed:", "yes" if moved else "no")
         changed = "yes"
-    if changed == "yes":
-        apps, broken = complete(apps, broken, items)
         os.makedirs(out, exist_ok=True)
-        write_site(apps, broken, shape(apps, generated), out, listing, notes)
+        write_site(apps, broken, catalog, out, listing, notes)
 
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:

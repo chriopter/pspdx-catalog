@@ -33,9 +33,16 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
+        # The format lives in the `pspdx` submodule: the schema the reader
+        # validates against, and the tests read, comes with the checkout,
+        # pinned to the commit this repository records, never the moving
+        # published one.
+        with:
+          submodules: true
 
-      # Only the schema check needs a module, and it gets its own
-      # environment; look.py keeps running on the bare python3.
+      # look.py reads the vendored schema and holds every .pspdx to it, so it
+      # needs jsonschema too; the tests and the final check share this one
+      # environment.
       - name: Install the schema checker
         run: |
           python3 -m venv "$RUNNER_TEMP/venv"
@@ -54,7 +61,8 @@ jobs:
           # a change to the list or the code, which no release announces, so
           # those read everything again and deploy whatever comes out.
           FORCE: ${{ github.event_name == 'schedule' && '0' || '1' }}
-        run: python3 .github/look.py
+        run: |
+          "$RUNNER_TEMP/venv/bin/python" .github/look.py
 
       # Before anything is uploaded, so a catalog consoles cannot trust
       # never replaces one they can.

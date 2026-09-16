@@ -19,7 +19,7 @@ import json
 import os
 import struct
 import urllib.parse
-from datetime import datetime, timezone
+from datetime import datetime
 
 import config
 
@@ -161,7 +161,7 @@ SHELL = """<!doctype html>
   </header>
 {body}
   <footer>
-    <span>Downloads from the authors’ GitHub releases</span>
+    <span>Downloads from the authors’ own releases</span>
     <span><a href="{repository_url}">catalog</a>
       &middot; <a href="{issues_url}">issues</a></span>
   </footer>
@@ -274,13 +274,22 @@ def actions(app):
               ' 0 4.323-2.631 5.275-5.138 5.554.404.348.766 1.034.766 2.084'
               ' 0 1.505-.014 2.719-.014 3.088 0 .301.203.652.774.541'
               'A11.252 11.252 0 0 0 12 .75Z"/></svg>')
+    # A source elsewhere than GitHub -- the elsewhere() path -- is no GitHub
+    # repository, so it gets a plain external-link mark and is named its source,
+    # not GitHub.
+    external = ('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+                'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" '
+                'aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M17 13v6a1 1 0 0 1-1 1'
+                'H5a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h6"/></svg>')
     download = ('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
                 'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" '
                 'aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></svg>')
+    on_github = app["source"].startswith("https://github.com/")
+    mark, where = (github, "GitHub") if on_github else (external, "its source")
     return (f'<div class="actions">'
             f'<a class="get" href="{e(app["source"])}" target="_blank" '
-            f'rel="noopener noreferrer" title="GitHub (new tab)" '
-            f'aria-label="{e(app["name"])} on GitHub (new tab)">{github}</a>'
+            f'rel="noopener noreferrer" title="{where} (new tab)" '
+            f'aria-label="{e(app["name"])} at {where} (new tab)">{mark}</a>'
             f'<a class="get" href="{e(app["releases"][0]["url"])}" target="_blank" '
             f'rel="noopener noreferrer" title="Download (new tab)" '
             f'aria-label="Download {e(app["name"])} (new tab)">{download}</a>'

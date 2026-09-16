@@ -59,7 +59,9 @@ set [`catalog.config.json`](catalog.config.json), enable GitHub Pages.
 | [`catalog.config.json`](catalog.config.json) | Catalog name and URLs |
 | [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) | Tests, builds and deploys |
 | [`.github/look.py`](.github/look.py) | Reads releases and builds the catalog |
+| [`.github/check_schema.py`](.github/check_schema.py) | Holds a `.pspdx` and the built catalog to the schema |
 | [`.github/page.py`](.github/page.py) | Renders the website |
+| [`pspdx/`](pspdx/) | The format, vendored as a submodule; the schema every check reads. `git submodule update --remote pspdx` bumps it |
 
 #### Site
 

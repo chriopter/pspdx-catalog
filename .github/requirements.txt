@@ -1,6 +1,7 @@
-# Only for check_schema.py and its test; look.py needs nothing but Python.
-# The two validators are what makes jsonschema check "date-time", "uri" and
-# "uri-reference" at all: without them those formats pass unread.
+# jsonschema holds a .pspdx (in look.py) and the built catalog (in
+# check_schema.py) to the vendored schema. The two validator packages are what
+# make jsonschema check the "date-time", "uri" and "uri-reference" formats at
+# all; without them those pass unread. The "date" format it checks on its own.
 jsonschema==4.26.0
 rfc3339-validator==0.1.4
 rfc3986-validator==0.1.1

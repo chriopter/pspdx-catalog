@@ -3,49 +3,68 @@
 catalog is published: a file consoles cannot trust is not deployed, the site
 that is up stays up, and every reason is printed with the place it is at.
 
-    check_schema.py                      site/catalog.json
-    check_schema.py <catalog.json>       another file
-    check_schema.py --schema <file|url>  another schema, e.g. offline
+    check_schema.py                   site/catalog.json
+    check_schema.py <catalog.json>    another file
+    check_schema.py --schema <file>   another schema, e.g. an unpushed one
 
     pip install -r .github/requirements.txt
 
-look.py reads the rules by hand so an author gets a sentence; this is the
-other half, the whole file against the schema as written, so the two cannot
-drift apart unnoticed."""
+look.py validates each .pspdx against the same schema as it reads a file; this
+is the last word, the whole built catalog against the catalog schema, before
+anything consoles rely on is published."""
 import json
 import os
 import sys
-import urllib.request
 
 import jsonschema
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCHEMA = "https://chriopter.github.io/pspdx/schema/catalog-v1.json"
+# The schema is vendored as the `pspdx` submodule and read from there, so a
+# build reads exactly the version this repository is pinned to and never the
+# moving published one: an unrelated change to the format cannot make the
+# hourly deploy go red on its own. `git submodule update --remote pspdx` bumps
+# it, and the diff shows which rules changed. look.py reads the same folder.
+SCHEMA_DIR = os.path.join(HERE, "pspdx", "schema")
+SCHEMA = os.path.join(SCHEMA_DIR, "catalog-v1.json")
 
 # jsonschema passes a format it has no checker for without a word, and the
 # checkers for these come from separate packages. A check that silently stops
 # checking dates and links is worse than none, so their absence is an error.
-FORMATS = ("date-time", "uri", "uri-reference")
+FORMATS = ("date", "date-time", "uri", "uri-reference")
 
 
 def load(where):
-    if where.startswith("https://"):
-        with urllib.request.urlopen(where, timeout=30) as response:
-            return json.load(response)
     with open(where, encoding="utf-8") as source:
         return json.load(source)
 
 
+# A prepared validator per schema: the meta-schema check, the format checkers
+# and the compiled schema are done once and reused, since a build asks the same
+# schema of every .pspdx. A broken schema or a missing checker is a fault of
+# this program's setup, raised the first time and the same for every file.
+_VALIDATORS = {}
+
+
+def validator(schema):
+    # Keyed by the schema object itself, not its $id: a build reuses the one
+    # schema it loaded, and two schemas that share an $id must not share a
+    # validator, or the second is never checked.
+    key = id(schema)
+    if key not in _VALIDATORS:
+        cls = jsonschema.validators.validator_for(schema)
+        cls.check_schema(schema)
+        checker = cls.FORMAT_CHECKER
+        missing = [name for name in FORMATS if name not in checker.checkers]
+        if missing:
+            raise RuntimeError(f"no checker for format {', '.join(missing)}; "
+                               "install .github/requirements.txt")
+        _VALIDATORS[key] = cls(schema, format_checker=checker)
+    return _VALIDATORS[key]
+
+
 def problems(catalog, schema):
     """Every place the catalog breaks the schema, in document order."""
-    cls = jsonschema.validators.validator_for(schema)
-    cls.check_schema(schema)
-    checker = cls.FORMAT_CHECKER
-    missing = [name for name in FORMATS if name not in checker.checkers]
-    if missing:
-        raise RuntimeError(f"no checker for format {', '.join(missing)}; "
-                           "install .github/requirements.txt")
-    errors = cls(schema, format_checker=checker).iter_errors(catalog)
+    errors = validator(schema).iter_errors(catalog)
     # Numbers before names and 2 before 10, so apps come out in list order.
     order = lambda error: [(0, p, "") if isinstance(p, int) else (1, 0, p)
                            for p in error.absolute_path]
