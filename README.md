@@ -4,10 +4,6 @@ An example catalog using the [PSPDX standard](https://chriopter.github.io/pspdx/
 browse it on the **[catalog website →](https://chriopter.github.io/pspdx-catalog/)**
 or in [PSPDX](https://github.com/chriopter/pspdx-app) on your PSP.
 
-- **Published every hour** by a GitHub workflow.
-- **Apps come from [`catalog/sources.txt`](catalog/sources.txt)** — or a `.pspdx` in [`catalog/fallback/`](catalog/fallback/) if the repo ships none.
-- **Artwork is extracted from each EBOOT** — `ICON0.PNG`, `PIC1.PNG`, `ICON1.PMF`, `SND0.AT3`.
-
 ## Add your app
 
 [Open an issue](https://github.com/chriopter/pspdx-catalog/issues) with your repository URL.
@@ -18,6 +14,10 @@ Fork this repository, list your repos in [`catalog/sources.txt`](catalog/sources
 set [`catalog/config.json`](catalog/config.json), enable GitHub Pages.
 
 ## Details
+
+- **Published every hour** by a GitHub workflow.
+- **Apps come from [`catalog/sources.txt`](catalog/sources.txt)** — or a `.pspdx` in [`catalog/fallback/`](catalog/fallback/) if the repo ships none.
+- **Artwork is extracted from each EBOOT** — `ICON0.PNG`, `PIC1.PNG`, `ICON1.PMF`, `SND0.AT3`.
 
 <details>
 <summary><b>Builder</b> · runs, reuse, failures</summary>
