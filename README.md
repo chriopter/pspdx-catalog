@@ -1,15 +1,12 @@
 # PSPDX Catalog
 
-An example catalog using the [PSPDX standard](https://chriopter.github.io/pspdx/),
-rebuilt every hour.
-The apps are the repositories listed in [`catalog/sources.txt`](catalog/sources.txt);
-one that ships no `.pspdx` of its own is described from
-[`catalog/fallback/`](catalog/fallback/), like the abandoned demo.
-Icon, screenshot, video and sound are extracted from each app's EBOOT
-(`ICON0.PNG`, `PIC1.PNG`, `ICON1.PMF`, `SND0.AT3`), so lists load with artwork, fast.
-
-Browse PSP homebrew on the **[catalog website →](https://chriopter.github.io/pspdx-catalog/)**
+An example catalog using the [PSPDX standard](https://chriopter.github.io/pspdx/) —
+browse it on the **[catalog website →](https://chriopter.github.io/pspdx-catalog/)**
 or in [PSPDX](https://github.com/chriopter/pspdx-app) on your PSP.
+
+- **Rebuilt every hour** — the published `catalog.json` is the only state.
+- **Apps come from [`catalog/sources.txt`](catalog/sources.txt)** — a repository that ships no `.pspdx` of its own is described from [`catalog/fallback/`](catalog/fallback/), like the abandoned demo.
+- **Artwork from the EBOOT** — icon, screenshot, video and sound (`ICON0.PNG`, `PIC1.PNG`, `ICON1.PMF`, `SND0.AT3`) are extracted, so lists load with images, fast.
 
 ## Add your app
 
