@@ -4,9 +4,9 @@ An example catalog using the [PSPDX standard](https://chriopter.github.io/pspdx/
 browse it on the **[catalog website →](https://chriopter.github.io/pspdx-catalog/)**
 or in [PSPDX](https://github.com/chriopter/pspdx-app) on your PSP.
 
-- **Rebuilt every hour** — the published `catalog.json` is the only state.
-- **Apps come from [`catalog/sources.txt`](catalog/sources.txt)** — a repository that ships no `.pspdx` of its own is described from [`catalog/fallback/`](catalog/fallback/), like the abandoned demo.
-- **Artwork from the EBOOT** — icon, screenshot, video and sound (`ICON0.PNG`, `PIC1.PNG`, `ICON1.PMF`, `SND0.AT3`) are extracted, so lists load with images, fast.
+- **Published every hour** by a GitHub workflow.
+- **Apps come from [`catalog/sources.txt`](catalog/sources.txt)** — or a `.pspdx` in [`catalog/fallback/`](catalog/fallback/) if the repo ships none.
+- **Artwork is extracted from each EBOOT** — `ICON0.PNG`, `PIC1.PNG`, `ICON1.PMF`, `SND0.AT3`.
 
 ## Add your app
 
