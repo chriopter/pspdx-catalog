@@ -17,6 +17,8 @@ or in [PSPDX](https://github.com/chriopter/pspdx-app) on your PSP.
 Fork this repository, list your repos in [`catalog/sources.txt`](catalog/sources.txt),
 set [`catalog/config.json`](catalog/config.json), enable GitHub Pages.
 
+## Details
+
 <details>
 <summary><b>Builder</b> · runs, reuse, failures</summary>
 
