@@ -58,9 +58,11 @@ set [`catalog.config.json`](catalog.config.json), enable GitHub Pages.
 | [`listed/`](listed/) | A `.pspdx` for each repository without its own |
 | [`catalog.config.json`](catalog.config.json) | Catalog name and URLs |
 | [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) | Tests, builds and deploys |
-| [`.github/look.py`](.github/look.py) | Reads releases and builds the catalog |
-| [`.github/check_schema.py`](.github/check_schema.py) | Holds a `.pspdx` and the built catalog to the schema |
-| [`.github/page.py`](.github/page.py) | Renders the website |
+| [`page/`](page/) | The generator: reads the list, builds the catalog and renders the site |
+| [`page/look.py`](page/look.py) | Reads releases and builds the catalog |
+| [`page/check_schema.py`](page/check_schema.py) | Holds a `.pspdx` and the built catalog to the schema |
+| [`page/page.py`](page/page.py) | Renders the website |
+| [`page/assets/`](page/assets/) | `style.css` and `wave.js`, copied to the site as they are |
 | [`pspdx/`](pspdx/) | The format, vendored as a submodule; the schema every check reads. `git submodule update --remote pspdx` bumps it |
 
 #### Site

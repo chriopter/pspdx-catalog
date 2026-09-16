@@ -46,11 +46,11 @@ jobs:
       - name: Install the schema checker
         run: |
           python3 -m venv "$RUNNER_TEMP/venv"
-          "$RUNNER_TEMP/venv/bin/pip" install -r .github/requirements.txt
+          "$RUNNER_TEMP/venv/bin/pip" install -r requirements.txt
 
       - name: Test catalog processing
         run: |
-          "$RUNNER_TEMP/venv/bin/python" -m unittest discover -s .github -p 'test_*.py' -v
+          "$RUNNER_TEMP/venv/bin/python" -m unittest discover -s page -t page -p 'test_*.py' -v
 
       - name: Read the repositories on the list
         id: look
@@ -62,14 +62,14 @@ jobs:
           # those read everything again and deploy whatever comes out.
           FORCE: ${{ github.event_name == 'schedule' && '0' || '1' }}
         run: |
-          "$RUNNER_TEMP/venv/bin/python" .github/look.py
+          "$RUNNER_TEMP/venv/bin/python" page/look.py
 
       # Before anything is uploaded, so a catalog consoles cannot trust
       # never replaces one they can.
       - name: Check the catalog against the schema
         if: steps.look.outputs.changed == 'yes'
         run: |
-          "$RUNNER_TEMP/venv/bin/python" .github/check_schema.py site/catalog.json
+          "$RUNNER_TEMP/venv/bin/python" page/check_schema.py site/catalog.json
 
       - uses: actions/configure-pages@v6
         if: steps.look.outputs.changed == 'yes'
