@@ -3,6 +3,7 @@
   "source": "https://github.com/chriopter/pspdx-demo-abandoned",
   "name": "PSPDX Abandoned Demo",
   "category": "demo",
+  "tags": ["unreleased"],
   "summary": "Hello, PSP. A homebrew without a .pspdx, listed anyway.",
   "author": "chriopter",
   "license": "MIT",
