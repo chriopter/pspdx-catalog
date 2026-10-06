@@ -376,7 +376,7 @@ class CatalogRegressionTests(unittest.TestCase):
                                            "homepage": homepage}}
         fetched = []
 
-        def package(asset, log):
+        def package(asset, log, kind=look.HOMEBREW):
             fetched.append(asset["browser_download_url"])
             return (asset["browser_download_url"][-9:].encode().hex().ljust(64, "0")[:64], "",
                     {"TITLE": "Demo"}, {}, "5" * 32)
@@ -443,13 +443,73 @@ class CatalogRegressionTests(unittest.TestCase):
         with self.assertRaisesRegex(look.Problem, "no published release"):
             self.history_with(spec, [self.release("v1", "2026-01-01T00:00:00Z", draft=True)])
 
-    def test_other_types_are_left_out_with_the_reason(self):
+    def test_an_iso_is_left_out_with_the_reason(self):
         spec = {"schema": look.PSPDX_SCHEMA, "name": "Example",
                 "source": "https://github.com/example/demo"}
-        for kind in ("plugin", "iso"):
-            with self.subTest(kind=kind), self.assertRaisesRegex(
-                    look.Problem, f"type {kind} is not supported by this catalog yet"):
-                self.entry_with(dict(spec, type=kind))
+        with self.assertRaisesRegex(look.Problem,
+                                    "type iso is not supported by this catalog yet"):
+            self.entry_with(dict(spec, type="iso"))
+
+    @staticmethod
+    def zipped(*names):
+        raw = io.BytesIO()
+        with zipfile.ZipFile(raw, "w") as archive:
+            for name in names:
+                archive.writestr(name, b"x")
+        return raw.getvalue()
+
+    def test_a_plugin_zip_holds_one_prx_at_the_top_level(self):
+        for names, said in ((("usbnet.prx",), "usbnet.prx"),
+                            (("LICENSE", "README.md", "Usbnet.PRX", "docs/other.prx"), "Usbnet.PRX"),
+                            (("LICENSE",), "no .prx at the top level of the zip"),
+                            (("seplugins/usbnet.prx",), "no .prx at the top level of the zip"),
+                            (("b.prx", "a.prx"), "2 .prx at the top level of the zip: a.prx, b.prx")):
+            with self.subTest(names=names):
+                archive = zipfile.ZipFile(io.BytesIO(self.zipped(*names)))
+                try:
+                    found = look.prx(archive)
+                except look.Problem as problem:
+                    found = str(problem)
+                self.assertEqual(found, said)
+
+    def plugin_with(self, raw, **more):
+        """entry() for a plugin with GitHub answered from here and the zip
+        really read: no EBOOT is asked of it."""
+        spec = dict({"schema": look.PSPDX_SCHEMA, "name": "Example", "type": "plugin",
+                     "category": "plugin", "source": "https://github.com/example/demo"}, **more)
+        release = self.release("v1.0", "2026-09-12T00:00:00Z")
+        release["assets"][0]["size"] = len(raw)
+        answers = {"/repos/example/demo/releases?per_page=30": [release],
+                   "/repos/example/demo": {"description": "From GitHub", "license": None}}
+        with mock.patch.object(look, "api", lambda path, what: answers[path]), \
+                mock.patch.object(look, "read_pspdx", lambda owner, repo, ref: (
+                    look.validate(spec), json.dumps(spec).encode())), \
+                mock.patch.object(look, "fetch", lambda url, cap, what: raw):
+            return look.entry("https://github.com/example/demo", "example", "demo", "", None)
+
+    def test_a_plugin_is_listed_without_eboot_installdir_or_media(self):
+        raw = self.zipped("usbnet.prx", "LICENSE")
+        app, log = self.plugin_with(raw)
+        self.assertEqual((app["type"], app["category"]), ("plugin", "plugin"))
+        self.assertNotIn("installdir", app)
+        self.assertEqual(app["_media"], {})
+        self.assertEqual(app["releases"], [{
+            "tag": "v1.0", "published_at": "2026-09-12T00:00:00Z",
+            "url": "https://github.com/example/demo/releases/download/v1.0/demo0.zip",
+            "size": len(raw), "sha256": look.sha256(raw)}])
+        self.assertIn("usbnet.prx is the plugin", log)
+        with tempfile.TemporaryDirectory() as directory:
+            catalog = look.shape([app], "2026-09-12T00:00:00Z")
+            self.assertNotIn("media", catalog["apps"][0])
+            self.assertEqual(check_schema.problems(catalog, look.CATALOG), [])
+            look.write_site([app], [], catalog, directory)
+            text = (pathlib.Path(directory) / "apps" / app["id"] / "index.html").read_text()
+            self.assertIn("Example", text)
+            self.assertNotIn("Installs to", text)
+        for names, reason in ((("LICENSE",), "no .prx"), (("a.prx", "b.prx"), "2 .prx"),
+                              (("Game/EBOOT.PBP",), "no .prx")):
+            with self.subTest(names=names), self.assertRaisesRegex(look.Problem, reason):
+                self.plugin_with(self.zipped(*names))
 
     def test_entry_carries_the_new_fields_and_the_derived_directory(self):
         spec = {"schema": look.PSPDX_SCHEMA, "name": "Example",
@@ -508,7 +568,7 @@ class PinsListingsAndZipsTests(unittest.TestCase):
                 raise look.Problem("no .pspdx")
             return look.validate(dict(own)), json.dumps(own).encode()
 
-        def package(asset, log):
+        def package(asset, log, kind=look.HOMEBREW):
             fetched.append(asset["browser_download_url"])
             if asset["size"] is None:
                 asset["size"] = 99

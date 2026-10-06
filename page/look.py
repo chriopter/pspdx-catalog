@@ -27,6 +27,9 @@ a release that carries one zip with an EBOOT.PBP in it. The file is the
 author's consent and their words; everything that changes is derived from the
 release and the EBOOT and never written by hand.
 
+A plugin (`type: "plugin"`) is listed too: its zip carries exactly one .prx at
+the top level and no EBOOT, so its entry has no installdir and no media.
+
 A repository without a `.pspdx` can still be listed, by this catalog and on
 its word: a `.pspdx` for it in `catalog/fallback/`. The moment the repository has a file of its own, that file is read
 and the listed one is redundant.
@@ -107,6 +110,10 @@ RELEASE_KEYS = tuple(PSPDX["properties"]["release"]["properties"])
 # homebrew when a file names no type; the length a summary is trimmed to.
 HOMEBREW = PSPDX["properties"]["type"]["default"]
 SUMMARY = PSPDX["properties"]["summary"]["maxLength"]
+# The other type this builder reads: a zip with one .prx at its top level.
+# An ISO is a valid file, but nothing here says whether one would install.
+PLUGIN = "plugin"
+LISTABLE = (HOMEBREW, PLUGIN)
 # The optional fields a catalog entry repeats from the file verbatim when the
 # file gives them -- everything else is derived, filled in or renamed. Both
 # builders (GitHub and elsewhere) copy exactly these, so the list is one.
@@ -498,6 +505,22 @@ def eboot(archive):
     return name, (path.rsplit("/", 1)[0] + "/" if "/" in path else "")
 
 
+def prx(archive):
+    """The one .prx at the top level of a plugin's zip, by its name. A console
+    copies that file into seplugins/ under the same name; a licence or a
+    README beside it is passed over. None or several is a question for the
+    author, and the run cannot guess which of them is the plugin."""
+    names = [name.replace("\\", "/") for name in archive.namelist()]
+    found = sorted(name for name in names
+                   if "/" not in name and name.lower().endswith(".prx"))
+    if not found:
+        raise Problem("no .prx at the top level of the zip")
+    if len(found) > 1:
+        raise Problem(f"{len(found)} .prx at the top level of the zip: "
+                      + ", ".join(found))
+    return found[0]
+
+
 def pbp_sections(f):
     """The sections before DATA.PSP, out of an open EBOOT.PBP, by name.
 
@@ -553,10 +576,12 @@ def sfo_strings(data):
     return out
 
 
-def package(asset, log):
+def package(asset, log, kind=HOMEBREW):
     """Downloads the zip GitHub named, checks it is the size GitHub said, and
     returns (sha256, the package directory, the SFO, the PBP sections). This
     is the part the console cannot afford and the reason the cache exists.
+    A plugin has no EBOOT: its package is the one .prx, named where the
+    directory would be, and the rest comes back empty.
 
     What it has to say goes on `log` rather than to the screen: several of
     these run at once, and a log with two repositories talking over each
@@ -582,6 +607,8 @@ def package(asset, log):
         archive = zipfile.ZipFile(io.BytesIO(raw))
     except zipfile.BadZipFile as e:
         raise Problem(f"{asset['name']} is not a zip: {e}") from None
+    if kind == PLUGIN:
+        return sha256(raw), prx(archive), {}, {}, None
     name, root = eboot(archive)
     with archive.open(name) as f:
         sections = pbp_sections(f)
@@ -780,10 +807,11 @@ def entry(url, owner, repo, tag, known, listed=None):
     else:
         spec, raw = read_pspdx(owner, repo, ref)
     check_source(spec, owner, repo)
-    # A plugin or an ISO is a valid file, but everything below is the check
-    # for an EBOOT under PSP/GAME, and none of it says whether either of those
-    # would install. Left out with that said, rather than listed on a guess.
-    if spec.get("type", HOMEBREW) != HOMEBREW:
+    # An ISO is a valid file, but everything below is the check for an EBOOT
+    # under PSP/GAME or for a plugin's one .prx, and none of it says whether an
+    # ISO would install. Left out with that said, rather than listed on a guess.
+    kind = spec.get("type", HOMEBREW)
+    if kind not in LISTABLE:
         raise Problem(f"type {spec['type']} is not supported by this catalog yet")
 
     pin = spec.get("release")
@@ -840,12 +868,11 @@ def entry(url, owner, repo, tag, known, listed=None):
     if not isinstance(meta, dict):
         raise Problem("GitHub answered with something other than a repository")
 
-    sha, root, sfo, sections, md5 = package(asset, log)
+    sha, root, sfo, sections, md5 = package(asset, log, kind)
     # The package and the title are said out loud rather than served: the
     # console copies the package into installdir and reads the title off the
     # stick, and whoever reads this log is looking for the zip's own shape.
-    log.append(f"{root or 'the zip itself'} is the package, "
-               f"PARAM.SFO says {sfo['TITLE']!r}")
+    log.append(packaged(kind, root, sfo))
     media, notes = pictures(sections)
     log.extend(notes)
 
@@ -866,7 +893,7 @@ def entry(url, owner, repo, tag, known, listed=None):
             if before and isinstance(before.get("sha256"), str):
                 older_sha, older_md5 = before["sha256"], before.get("eboot_md5")
             else:
-                older_sha, _, _, _, older_md5 = package(older_asset, log)
+                older_sha, _, _, _, older_md5 = package(older_asset, log, kind)
         except Problem as ex:
             log.append(f"left out of the history: {ex}")
             continue
@@ -896,7 +923,8 @@ def entry(url, owner, repo, tag, known, listed=None):
         **{key: spec[key] for key in CARRIED if key in spec},
         # Always there for a homebrew, derived where the file said nothing,
         # so that a console reading the catalog never has to know the rule.
-        "installdir": installdir(spec),
+        # A plugin has none: the schema forbids it one.
+        **({"installdir": installdir(spec)} if kind == HOMEBREW else {}),
         "summary": spec.get("summary", trim(meta.get("description") or "")),
         "author": spec.get("author", owner),
         "license": spec.get("license", spdx),
@@ -917,9 +945,21 @@ def entry(url, owner, repo, tag, known, listed=None):
         "_page": page_url,
     }
     log.append(f"{app['id']} {latest['tag_name']}: {app['name']!r}, "
-               + (", ".join(sorted(media)) or "nothing in the PBP")
+               + (", ".join(sorted(media)) or nothing(kind))
                + f", {len(history)} release{'' if len(history) == 1 else 's'}")
     return app, log
+
+
+def packaged(kind, root, sfo):
+    """The log's line for what a zip was found to hold."""
+    if kind == PLUGIN:
+        return f"{root} is the plugin"
+    return f"{root or 'the zip itself'} is the package, PARAM.SFO says {sfo['TITLE']!r}"
+
+
+def nothing(kind):
+    """The log's words for an entry without media."""
+    return "a plugin, no media" if kind == PLUGIN else "nothing in the PBP"
 
 
 def elsewhere(listed, known):
@@ -927,7 +967,8 @@ def elsewhere(listed, known):
     there, so the pinned release in the file says where the zip is and when
     it was published, and the zip is read as any release's is."""
     spec, log = listed["spec"], []
-    if spec.get("type", HOMEBREW) != HOMEBREW:
+    kind = spec.get("type", HOMEBREW)
+    if kind not in LISTABLE:
         raise Problem(f"type {spec['type']} is not supported by this catalog yet")
     pin = spec.get("release")
     if not pin:
@@ -945,9 +986,8 @@ def elsewhere(listed, known):
         return again(known, listed["link"], spec["source"]), [f"unchanged, {pin['tag']}"]
     name = urllib.parse.unquote(pin["url"].split("?", 1)[0].rsplit("/", 1)[-1]) or "the zip"
     asset = {"name": name, "size": None, "browser_download_url": pin["url"]}
-    sha, root, sfo, sections, md5 = package(asset, log)
-    log.append(f"{root or 'the zip itself'} is the package, "
-               f"PARAM.SFO says {sfo['TITLE']!r}")
+    sha, root, sfo, sections, md5 = package(asset, log, kind)
+    log.append(packaged(kind, root, sfo))
     media, notes = pictures(sections)
     log.extend(notes)
     app = {
@@ -955,7 +995,7 @@ def elsewhere(listed, known):
         "source": spec["source"],
         "name": spec["name"],
         **{key: spec[key] for key in CARRIED if key in spec},
-        "installdir": installdir(spec),
+        **({"installdir": installdir(spec)} if kind == HOMEBREW else {}),
         # Nothing to fall back on out here: what the file does not say, the
         # entry says empty.
         **{key: spec.get(key, "") for key in ("summary", "author", "license")},
@@ -968,7 +1008,7 @@ def elsewhere(listed, known):
         "_page": spec["source"],
     }
     log.append(f"{app['id']} {pin['tag']}: {app['name']!r}, "
-               + (", ".join(sorted(media)) or "nothing in the PBP") + ", 1 release")
+               + (", ".join(sorted(media)) or nothing(kind)) + ", 1 release")
     return app, log
 
 

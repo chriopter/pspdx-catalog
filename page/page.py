@@ -447,7 +447,8 @@ def app_page(app, out, settings):
                     f'rel="noopener noreferrer">{e(release["tag"])}</a>'),
         ("Updated", day),
         ("Download", size(release["size"])),
-        ("Installs to", e(app.get("installdir", ""))),
+        # A plugin has no directory of its own; a console puts it in seplugins.
+        *([("Installs to", e(app["installdir"]))] if app.get("installdir") else []),
         *([("Website", f'<a href="{e(app["website"])}" target="_blank" '
                        f'rel="noopener noreferrer">{e(host(app["website"]))}</a>')]
           if app.get("website") else []),
