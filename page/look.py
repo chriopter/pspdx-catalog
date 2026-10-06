@@ -28,7 +28,8 @@ author's consent and their words; everything that changes is derived from the
 release and the EBOOT and never written by hand.
 
 A plugin (`type: "plugin"`) is listed too: its zip carries exactly one .prx at
-the top level and no EBOOT, so its entry has no installdir and no media.
+the top level and no EBOOT, so its entry has no installdir. Its icon is the
+ICON0.PNG at the top level of the zip, if it has one; it has no other media.
 
 A repository without a `.pspdx` can still be listed, by this catalog and on
 its word: a `.pspdx` for it in `catalog/fallback/`. The moment the repository has a file of its own, that file is read
@@ -521,6 +522,17 @@ def prx(archive):
     return found[0]
 
 
+def prx_sections(archive):
+    """What a plugin's zip carries of the sections an EBOOT has: the ICON0.PNG
+    at its top level, if there is one, under that name. `pictures` then holds
+    it to what it holds an EBOOT's icon to. Nothing else in the zip is media."""
+    for name in sorted(archive.namelist()):
+        if name.replace("\\", "/").upper() == "ICON0.PNG":
+            with archive.open(name) as f:
+                return {"ICON0.PNG": f.read()}
+    return {}
+
+
 def pbp_sections(f):
     """The sections before DATA.PSP, out of an open EBOOT.PBP, by name.
 
@@ -581,7 +593,7 @@ def package(asset, log, kind=HOMEBREW):
     returns (sha256, the package directory, the SFO, the PBP sections). This
     is the part the console cannot afford and the reason the cache exists.
     A plugin has no EBOOT: its package is the one .prx, named where the
-    directory would be, and the rest comes back empty.
+    directory would be, and its only section is an ICON0.PNG beside it.
 
     What it has to say goes on `log` rather than to the screen: several of
     these run at once, and a log with two repositories talking over each
@@ -608,7 +620,7 @@ def package(asset, log, kind=HOMEBREW):
     except zipfile.BadZipFile as e:
         raise Problem(f"{asset['name']} is not a zip: {e}") from None
     if kind == PLUGIN:
-        return sha256(raw), prx(archive), {}, {}, None
+        return sha256(raw), prx(archive), {}, prx_sections(archive), None
     name, root = eboot(archive)
     with archive.open(name) as f:
         sections = pbp_sections(f)

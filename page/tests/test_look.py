@@ -472,6 +472,46 @@ class CatalogRegressionTests(unittest.TestCase):
                     found = str(problem)
                 self.assertEqual(found, said)
 
+    PNG = look.MAGIC[".png"] + b"icon"
+
+    @staticmethod
+    def plugin_zip(**files):
+        raw = io.BytesIO()
+        with zipfile.ZipFile(raw, "w") as archive:
+            archive.writestr("usbnet.prx", b"x")
+            for name, data in files.items():
+                archive.writestr(name.replace("__", "/"), data)
+        return raw.getvalue()
+
+    def test_a_plugins_icon_is_the_icon0_png_at_the_top_level_of_its_zip(self):
+        for name in ("ICON0.PNG", "icon0.png"):
+            with self.subTest(name=name):
+                app, log = self.plugin_with(self.plugin_zip(**{name: self.PNG}))
+                self.assertEqual(app["_media"], {"icon": (".png", self.PNG)})
+                self.assertIn("usbnet.prx is the plugin", log)
+        with tempfile.TemporaryDirectory() as directory:
+            catalog = look.shape([app], "2026-09-12T00:00:00Z")
+            where = f"apps/{app['id']}/icon-{look.sha256(self.PNG)[:8]}.png"
+            self.assertEqual(catalog["apps"][0]["media"], {"icon": where})
+            self.assertEqual(check_schema.problems(catalog, look.CATALOG), [])
+            look.write_site([app], [], catalog, directory)
+            self.assertEqual((pathlib.Path(directory) / where).read_bytes(), self.PNG)
+        # Nothing else in the zip is media, and an icon elsewhere is none.
+        app, _ = self.plugin_with(self.plugin_zip(**{
+            "PIC1.PNG": self.PNG, "ICON1.PMF": b"PSMF", "SND0.AT3": b"RIFF",
+            "ICON0.PNG.txt": self.PNG, "art__ICON0.PNG": self.PNG}))
+        self.assertEqual(app["_media"], {})
+        # A bad icon is left out with a note and the plugin stays listed, as
+        # a homebrew with a bad ICON0 in its EBOOT does.
+        big = self.PNG + b"\0" * look.MEDIA["icon"][1]
+        for data, note in ((b"GIF89a", "ICON0.PNG is not a png file; left out"),
+                           (big, f"ICON0.PNG is {len(big)} bytes, the limit is "
+                                 f"{look.MEDIA['icon'][1]}; left out")):
+            with self.subTest(note=note):
+                app, log = self.plugin_with(self.plugin_zip(**{"ICON0.PNG": data}))
+                self.assertEqual(app["_media"], {})
+                self.assertIn(note, log)
+
     def plugin_with(self, raw, **more):
         """entry() for a plugin with GitHub answered from here and the zip
         really read: no EBOOT is asked of it."""

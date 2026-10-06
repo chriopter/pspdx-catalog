@@ -18,7 +18,7 @@ set [`catalog/config.json`](catalog/config.json), enable GitHub Pages.
 - **Published every hour** by a GitHub workflow.
 - **Apps come from [`catalog/sources.txt`](catalog/sources.txt)** — or a `.pspdx` in [`catalog/fallback/`](catalog/fallback/) if the repo ships none.
 - **Artwork is extracted from each EBOOT** — `ICON0.PNG`, `PIC1.PNG`, `ICON1.PMF`, `SND0.AT3`.
-- **Plugins are listed too** — `type: "plugin"`, a ZIP with one `.prx` at its top level; no artwork.
+- **Plugins are listed too** — `type: "plugin"`, a ZIP with one `.prx` at its top level; the icon is the `ICON0.PNG` beside it, if there is one.
 
 <details>
 <summary><b>Builder</b> · runs, reuse, failures</summary>
