@@ -20,7 +20,7 @@ import look
 # repeated by its rule alone: the file may leave it out, the catalog may not,
 # and each schema says which in its own description.
 FIELDS = ("name", "author", "summary", "type", "category", "tags", "languages", "license",
-          "description", "source")
+          "description", "source", "plugin")
 SAME_RULE = ("installdir",)
 # The fields only a file has: a pinned release becomes the catalog's
 # releases, which the builder fills in.
@@ -87,6 +87,19 @@ CASES = [
     ("type iso without installdir", dict(PLUGIN, type="iso"), True),
     ("type plugin with installdir", but(type="plugin"), False),
     ("type iso with installdir", but(type="iso"), False),
+    ("plugin names its .prx", dict(PLUGIN, plugin="main.prx"), True),
+    ("plugin names a .PRX", dict(PLUGIN, plugin="Main_1.2-b.PRX"), True),
+    ("plugin names 32 characters", dict(PLUGIN, plugin="p" * 28 + ".prx"), True),
+    ("plugin names 33 characters", dict(PLUGIN, plugin="p" * 29 + ".prx"), False),
+    ("plugin names no .prx", dict(PLUGIN, plugin="main.ini"), False),
+    ("plugin names .prx alone", dict(PLUGIN, plugin=".prx"), False),
+    ("plugin names a hidden file", dict(PLUGIN, plugin=".main.prx"), False),
+    ("plugin names a path", dict(PLUGIN, plugin="sub/main.prx"), False),
+    ("plugin names a file with a space", dict(PLUGIN, plugin="my main.prx"), False),
+    ("plugin names a number", dict(PLUGIN, plugin=5), False),
+    ("plugin named by a homebrew", but(plugin="main.prx"), False),
+    ("plugin named without a type", without("type") | {"plugin": "main.prx"}, False),
+    ("plugin named by an iso", dict(PLUGIN, type="iso", plugin="main.prx"), False),
     ("type in another case", but(type="Plugin"), False),
     ("type empty", but(type=""), False),
     ("type unknown", but(type="theme"), False),

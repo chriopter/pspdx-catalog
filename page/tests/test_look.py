@@ -376,7 +376,7 @@ class CatalogRegressionTests(unittest.TestCase):
                                            "homepage": homepage}}
         fetched = []
 
-        def package(asset, log, kind=look.HOMEBREW):
+        def package(asset, log, kind=look.HOMEBREW, named=None):
             fetched.append(asset["browser_download_url"])
             return (asset["browser_download_url"][-9:].encode().hex().ljust(64, "0")[:64], "",
                     {"TITLE": "Demo"}, {}, "5" * 32)
@@ -458,19 +458,77 @@ class CatalogRegressionTests(unittest.TestCase):
                 archive.writestr(name, b"x")
         return raw.getvalue()
 
-    def test_a_plugin_zip_holds_one_prx_at_the_top_level(self):
-        for names, said in ((("usbnet.prx",), "usbnet.prx"),
-                            (("LICENSE", "README.md", "Usbnet.PRX", "docs/other.prx"), "Usbnet.PRX"),
-                            (("LICENSE",), "no .prx at the top level of the zip"),
-                            (("seplugins/usbnet.prx",), "no .prx at the top level of the zip"),
-                            (("b.prx", "a.prx"), "2 .prx at the top level of the zip: a.prx, b.prx")):
-            with self.subTest(names=names):
+    def test_a_plugins_package_is_the_folder_of_its_shallowest_prx(self):
+        top = "the top level of the zip"
+        for names, named, said in (
+                # The old rule's zip is the new rule's too.
+                (("usbnet.prx",), None, "usbnet.prx"),
+                (("LICENSE", "README.md", "Usbnet.PRX", "docs/other.prx"), None, "Usbnet.PRX"),
+                # A folder, with what lies beside the .prx.
+                (("README.md", "cxmb/cxmb.prx", "cxmb/cxmb.ini"), None, "cxmb/cxmb.prx"),
+                (("seplugins/usbnet.prx",), None, "seplugins/usbnet.prx"),
+                (("a\\b\\main.prx", "a\\b\\main.ini"), None, "a/b/main.prx"),
+                (("__MACOSX/._main.prx", "p/main.prx"), None, "p/main.prx"),
+                # A .prx further down is a file like any other.
+                (("p/main.prx", "p/mods/a.prx", "p/mods/b.prx", "q/r/c.prx"), None, "p/main.prx"),
+                (("main.prx", "extra/a.prx", "extra/b.prx"), None, "main.prx"),
+                # Several beside each other: the file names the one.
+                (("p/b.prx", "p/a.prx", "p/a.ini"), "b.prx", "p/b.prx"),
+                (("b.prx", "a.prx"), "A.PRX", "a.prx"),
+                (("usbnet.prx",), "usbnet.prx", "usbnet.prx"),
+                (("b.prx", "a.prx"), None,
+                 f'2 .prx in {top}: a.prx, b.prx; the .pspdx names none with "plugin"'),
+                (("p/b.prx", "p/a.prx", "p/x/c.prx"), None,
+                 '2 .prx in p/: a.prx, b.prx; the .pspdx names none with "plugin"'),
+                (("p/b.prx", "p/a.prx"), "c.prx",
+                 '.pspdx: "plugin" names c.prx, p/ holds a.prx, b.prx'),
+                (("usbnet.prx", "sub/main.prx"), "main.prx",
+                 f'.pspdx: "plugin" names main.prx, {top} holds usbnet.prx'),
+                # Nothing to choose from, or nothing that decides.
+                (("LICENSE", "prx/"), None, "no .prx in the zip"),
+                (("a/one.prx", "b/two.prx"), None,
+                 "a .prx in 2 folders of the zip, none nearer the top: a/, b/"),
+                (("../main.prx",), None, "the zip puts its .prx at '../'"),
+                (("my plugin.prx",), None, "'my plugin.prx' is no name for a plugin's .prx"),
+                (("p/" + "n" * 29 + ".prx",), None,
+                 f"'{'n' * 29}.prx' is no name for a plugin's .prx")):
+            with self.subTest(names=names, named=named):
                 archive = zipfile.ZipFile(io.BytesIO(self.zipped(*names)))
                 try:
-                    found = look.prx(archive)
+                    found = look.prx(archive, named)
                 except look.Problem as problem:
                     found = str(problem)
                 self.assertEqual(found, said)
+
+    def test_a_plugin_in_a_folder_is_listed_with_the_icon_beside_its_prx(self):
+        raw = io.BytesIO()
+        with zipfile.ZipFile(raw, "w") as archive:
+            for name, data in (("README.md", b"x"), ("ICON0.PNG", b"GIF89a"),
+                               ("cxmb/cxmb.prx", b"x"), ("cxmb/cxmb.ini", b"x"),
+                               ("cxmb/ICON0.PNG", self.PNG), ("cxmb/themes/ICON0.PNG", b"x"),
+                               ("cxmb/themes/deeper.prx", b"x")):
+                archive.writestr(name, data)
+        app, log = self.plugin_with(raw.getvalue())
+        self.assertEqual(app["_media"], {"icon": (".png", self.PNG)})
+        self.assertNotIn("plugin", app)
+        self.assertIn("cxmb/ is the package, cxmb.prx the plugin, to seplugins/cxmb/", log)
+
+    def test_several_prx_need_the_one_the_file_names(self):
+        raw = self.zipped("p/main.prx", "p/helper.prx", "p/main.ini")
+        app, log = self.plugin_with(raw, plugin="main.prx")
+        self.assertEqual(app["plugin"], "main.prx")
+        self.assertIn("p/ is the package, main.prx the plugin, to seplugins/main/", log)
+        catalog = look.shape([app], "2026-09-12T00:00:00Z")
+        self.assertEqual(catalog["apps"][0]["plugin"], "main.prx")
+        self.assertEqual(check_schema.problems(catalog, look.CATALOG), [])
+        with self.assertRaisesRegex(look.Problem, "2 .prx in p/: helper.prx, main.prx"):
+            self.plugin_with(raw)
+        with self.assertRaisesRegex(look.Problem, '"plugin" names other.prx'):
+            self.plugin_with(raw, plugin="other.prx")
+        # Only a plugin has a .prx to name.
+        with self.assertRaisesRegex(look.Problem, ".pspdx"):
+            look.validate({"schema": look.PSPDX_SCHEMA, "name": "Example",
+                           "source": "https://github.com/example/demo", "plugin": "main.prx"})
 
     PNG = look.MAGIC[".png"] + b"icon"
 
@@ -483,12 +541,13 @@ class CatalogRegressionTests(unittest.TestCase):
                 archive.writestr(name.replace("__", "/"), data)
         return raw.getvalue()
 
-    def test_a_plugins_icon_is_the_icon0_png_at_the_top_level_of_its_zip(self):
+    def test_a_plugins_icon_is_the_icon0_png_beside_its_prx(self):
         for name in ("ICON0.PNG", "icon0.png"):
             with self.subTest(name=name):
                 app, log = self.plugin_with(self.plugin_zip(**{name: self.PNG}))
                 self.assertEqual(app["_media"], {"icon": (".png", self.PNG)})
-                self.assertIn("usbnet.prx is the plugin", log)
+                self.assertIn("the zip itself is the package, usbnet.prx the plugin, "
+                              "to seplugins/usbnet/", log)
         with tempfile.TemporaryDirectory() as directory:
             catalog = look.shape([app], "2026-09-12T00:00:00Z")
             where = f"apps/{app['id']}/icon-{look.sha256(self.PNG)[:8]}.png"
@@ -537,7 +596,8 @@ class CatalogRegressionTests(unittest.TestCase):
             "tag": "v1.0", "published_at": "2026-09-12T00:00:00Z",
             "url": "https://github.com/example/demo/releases/download/v1.0/demo0.zip",
             "size": len(raw), "sha256": look.sha256(raw)}])
-        self.assertIn("usbnet.prx is the plugin", log)
+        self.assertIn("the zip itself is the package, usbnet.prx the plugin, "
+                              "to seplugins/usbnet/", log)
         with tempfile.TemporaryDirectory() as directory:
             catalog = look.shape([app], "2026-09-12T00:00:00Z")
             self.assertNotIn("media", catalog["apps"][0])
@@ -547,6 +607,7 @@ class CatalogRegressionTests(unittest.TestCase):
             self.assertIn("Example", text)
             self.assertNotIn("Installs to", text)
         for names, reason in ((("LICENSE",), "no .prx"), (("a.prx", "b.prx"), "2 .prx"),
+                              (("a/a.prx", "b/b.prx"), "2 folders"),
                               (("Game/EBOOT.PBP",), "no .prx")):
             with self.subTest(names=names), self.assertRaisesRegex(look.Problem, reason):
                 self.plugin_with(self.zipped(*names))
@@ -608,7 +669,7 @@ class PinsListingsAndZipsTests(unittest.TestCase):
                 raise look.Problem("no .pspdx")
             return look.validate(dict(own)), json.dumps(own).encode()
 
-        def package(asset, log, kind=look.HOMEBREW):
+        def package(asset, log, kind=look.HOMEBREW, named=None):
             fetched.append(asset["browser_download_url"])
             if asset["size"] is None:
                 asset["size"] = 99

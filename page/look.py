@@ -27,9 +27,11 @@ a release that carries one zip with an EBOOT.PBP in it. The file is the
 author's consent and their words; everything that changes is derived from the
 release and the EBOOT and never written by hand.
 
-A plugin (`type: "plugin"`) is listed too: its zip carries exactly one .prx at
-the top level and no EBOOT, so its entry has no installdir. Its icon is the
-ICON0.PNG at the top level of the zip, if it has one; it has no other media.
+A plugin (`type: "plugin"`) is listed too: the folder of the shallowest .prx
+in its zip is the package, and a console copies it to seplugins/<that .prx's
+name>/, so its entry has no installdir. Of several .prx in that folder the
+file's `plugin` names the one to load. Its icon is the ICON0.PNG beside the
+.prx, if it has one; it has no other media.
 
 A repository without a `.pspdx` can still be listed, by this catalog and on
 its word: a `.pspdx` for it in `catalog/fallback/`. The moment the repository has a file of its own, that file is read
@@ -111,14 +113,17 @@ RELEASE_KEYS = tuple(PSPDX["properties"]["release"]["properties"])
 # homebrew when a file names no type; the length a summary is trimmed to.
 HOMEBREW = PSPDX["properties"]["type"]["default"]
 SUMMARY = PSPDX["properties"]["summary"]["maxLength"]
-# The other type this builder reads: a zip with one .prx at its top level.
+# The other type this builder reads: a zip with a .prx and its folder.
 # An ISO is a valid file, but nothing here says whether one would install.
 PLUGIN = "plugin"
 LISTABLE = (HOMEBREW, PLUGIN)
+# The name a plugin's .prx may have, which is also the name `plugin` may say:
+# the folder under seplugins/ is named after it.
+PRX = re.compile(PSPDX["properties"]["plugin"]["pattern"])
 # The optional fields a catalog entry repeats from the file verbatim when the
 # file gives them -- everything else is derived, filled in or renamed. Both
 # builders (GitHub and elsewhere) copy exactly these, so the list is one.
-CARRIED = ("type", "category", "tags", "languages")
+CARRIED = ("type", "category", "tags", "languages", "plugin")
 
 # A repository URL as the console reads one, matched whole and read for the id:
 # an owner of 1 to 39 and a repository of 1 to 100 of [A-Za-z0-9_.-], a .git and
@@ -506,28 +511,56 @@ def eboot(archive):
     return name, (path.rsplit("/", 1)[0] + "/" if "/" in path else "")
 
 
-def prx(archive):
-    """The one .prx at the top level of a plugin's zip, by its name. A console
-    copies that file into seplugins/ under the same name; a licence or a
-    README beside it is passed over. None or several is a question for the
-    author, and the run cannot guess which of them is the plugin."""
-    names = [name.replace("\\", "/") for name in archive.namelist()]
-    found = sorted(name for name in names
-                   if "/" not in name and name.lower().endswith(".prx"))
+def prx(archive, named=None):
+    """Where a plugin's .prx sits in its zip: the shallowest one decides, and
+    the folder holding it -- the zip itself when it lies at the top -- is the
+    package, with everything beside and below it. A console copies that to
+    seplugins/<the .prx's name without .prx>/. One .prx in the folder is the
+    one loaded; of several it is the one the .pspdx names with `plugin`, and
+    a .prx further down is a file like any other. Whatever leaves the choice
+    open is a question for the author, and the run cannot guess the answer."""
+    # A zip written on Windows carries backslashes; a Mac's carries a shadow
+    # of every file under __MACOSX/, which is never the package.
+    paths = [name.replace("\\", "/") for name in archive.namelist()]
+    found = [path for path in paths
+             if path.lower().endswith(".prx") and not path.endswith("/")
+             and not path.startswith("__MACOSX/")]
     if not found:
-        raise Problem("no .prx at the top level of the zip")
-    if len(found) > 1:
-        raise Problem(f"{len(found)} .prx at the top level of the zip: "
-                      + ", ".join(found))
-    return found[0]
+        raise Problem("no .prx in the zip")
+    depth = min(path.count("/") for path in found)
+    roots = sorted({path[:path.rfind("/") + 1] for path in found
+                    if path.count("/") == depth})
+    if len(roots) > 1:
+        raise Problem(f"a .prx in {len(roots)} folders of the zip, none nearer "
+                      "the top: " + ", ".join(roots))
+    root = roots[0]
+    if root.startswith("/") or ".." in root.split("/"):
+        raise Problem(f"the zip puts its .prx at {root!r}")
+    beside = sorted(path[len(root):] for path in found
+                    if path.startswith(root) and "/" not in path[len(root):])
+    where = root or "the top level of the zip"
+    if named:
+        # A stick's names know no case, so neither does this one.
+        chosen = [name for name in beside if name.lower() == named.lower()]
+        if len(chosen) != 1:
+            raise Problem(f'.pspdx: "plugin" names {named}, {where} holds '
+                          + ", ".join(beside))
+    elif len(beside) > 1:
+        raise Problem(f"{len(beside)} .prx in {where}: " + ", ".join(beside)
+                      + '; the .pspdx names none with "plugin"')
+    else:
+        chosen = beside
+    if not PRX.fullmatch(chosen[0]):
+        raise Problem(f"{chosen[0]!r} is no name for a plugin's .prx")
+    return root + chosen[0]
 
 
-def prx_sections(archive):
+def prx_sections(archive, root):
     """What a plugin's zip carries of the sections an EBOOT has: the ICON0.PNG
-    at its top level, if there is one, under that name. `pictures` then holds
+    beside its .prx, if there is one, under that name. `pictures` then holds
     it to what it holds an EBOOT's icon to. Nothing else in the zip is media."""
     for name in sorted(archive.namelist()):
-        if name.replace("\\", "/").upper() == "ICON0.PNG":
+        if name.replace("\\", "/").upper() == root.upper() + "ICON0.PNG":
             with archive.open(name) as f:
                 return {"ICON0.PNG": f.read()}
     return {}
@@ -588,12 +621,13 @@ def sfo_strings(data):
     return out
 
 
-def package(asset, log, kind=HOMEBREW):
+def package(asset, log, kind=HOMEBREW, named=None):
     """Downloads the zip GitHub named, checks it is the size GitHub said, and
     returns (sha256, the package directory, the SFO, the PBP sections). This
     is the part the console cannot afford and the reason the cache exists.
-    A plugin has no EBOOT: its package is the one .prx, named where the
-    directory would be, and its only section is an ICON0.PNG beside it.
+    A plugin has no EBOOT: its .prx, by its path in the zip, stands where
+    the directory would, and its only section is an ICON0.PNG beside it.
+    `named` is the .prx its file says to load.
 
     What it has to say goes on `log` rather than to the screen: several of
     these run at once, and a log with two repositories talking over each
@@ -620,7 +654,9 @@ def package(asset, log, kind=HOMEBREW):
     except zipfile.BadZipFile as e:
         raise Problem(f"{asset['name']} is not a zip: {e}") from None
     if kind == PLUGIN:
-        return sha256(raw), prx(archive), {}, prx_sections(archive), None
+        main = prx(archive, named)
+        return (sha256(raw), main, {},
+                prx_sections(archive, main[:main.rfind("/") + 1]), None)
     name, root = eboot(archive)
     with archive.open(name) as f:
         sections = pbp_sections(f)
@@ -820,7 +856,7 @@ def entry(url, owner, repo, tag, known, listed=None):
         spec, raw = read_pspdx(owner, repo, ref)
     check_source(spec, owner, repo)
     # An ISO is a valid file, but everything below is the check for an EBOOT
-    # under PSP/GAME or for a plugin's one .prx, and none of it says whether an
+    # under PSP/GAME or for a plugin's .prx, and none of it says whether an
     # ISO would install. Left out with that said, rather than listed on a guess.
     kind = spec.get("type", HOMEBREW)
     if kind not in LISTABLE:
@@ -880,7 +916,7 @@ def entry(url, owner, repo, tag, known, listed=None):
     if not isinstance(meta, dict):
         raise Problem("GitHub answered with something other than a repository")
 
-    sha, root, sfo, sections, md5 = package(asset, log, kind)
+    sha, root, sfo, sections, md5 = package(asset, log, kind, spec.get("plugin"))
     # The package and the title are said out loud rather than served: the
     # console copies the package into installdir and reads the title off the
     # stick, and whoever reads this log is looking for the zip's own shape.
@@ -905,7 +941,8 @@ def entry(url, owner, repo, tag, known, listed=None):
             if before and isinstance(before.get("sha256"), str):
                 older_sha, older_md5 = before["sha256"], before.get("eboot_md5")
             else:
-                older_sha, _, _, _, older_md5 = package(older_asset, log, kind)
+                older_sha, _, _, _, older_md5 = package(older_asset, log, kind,
+                                                            spec.get("plugin"))
         except Problem as ex:
             log.append(f"left out of the history: {ex}")
             continue
@@ -965,7 +1002,9 @@ def entry(url, owner, repo, tag, known, listed=None):
 def packaged(kind, root, sfo):
     """The log's line for what a zip was found to hold."""
     if kind == PLUGIN:
-        return f"{root} is the plugin"
+        folder, name = root[:root.rfind("/") + 1], root[root.rfind("/") + 1:]
+        return (f"{folder or 'the zip itself'} is the package, {name} the plugin, "
+                f"to seplugins/{name[:-4]}/")
     return f"{root or 'the zip itself'} is the package, PARAM.SFO says {sfo['TITLE']!r}"
 
 
@@ -998,7 +1037,7 @@ def elsewhere(listed, known):
         return again(known, listed["link"], spec["source"]), [f"unchanged, {pin['tag']}"]
     name = urllib.parse.unquote(pin["url"].split("?", 1)[0].rsplit("/", 1)[-1]) or "the zip"
     asset = {"name": name, "size": None, "browser_download_url": pin["url"]}
-    sha, root, sfo, sections, md5 = package(asset, log, kind)
+    sha, root, sfo, sections, md5 = package(asset, log, kind, spec.get("plugin"))
     log.append(packaged(kind, root, sfo))
     media, notes = pictures(sections)
     log.extend(notes)
